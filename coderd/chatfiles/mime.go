@@ -76,6 +76,28 @@ func IsAllowedStoredMediaType(mediaType string) bool {
 	return ok
 }
 
+// IsCompatibleUploadMediaType reports whether an upload request that declared
+// declaredMediaType may be stored as storedMediaType after byte classification.
+// Exact matches are always compatible; the compatibility table only covers
+// explicit refinements like text/plain uploads that safely store as richer text
+// subtypes.
+func IsCompatibleUploadMediaType(declaredMediaType, storedMediaType string) bool {
+	declaredMediaType = BaseMediaType(declaredMediaType)
+	storedMediaType = BaseMediaType(storedMediaType)
+	if declaredMediaType == storedMediaType {
+		return true
+	}
+	if declaredMediaType != "text/plain" {
+		return false
+	}
+	switch storedMediaType {
+	case "text/markdown", "text/csv", "application/json":
+		return true
+	default:
+		return false
+	}
+}
+
 // HasSVGRootElement reports whether the provided file bytes decode to an SVG
 // root element. This catches SVG content even when generic sniffers classify it
 // as text or XML.

@@ -107,6 +107,50 @@ func TestClassifyStoredMediaType(t *testing.T) {
 	}
 }
 
+func TestIsCompatibleUploadMediaType(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		declared string
+		stored   string
+		want     bool
+	}{
+		{
+			name:     "TextPlainMayRefineToJSON",
+			declared: "text/plain; charset=utf-8",
+			stored:   "application/json",
+			want:     true,
+		},
+		{
+			name:     "TextPlainMayRefineToCSV",
+			declared: "text/plain",
+			stored:   "text/csv",
+			want:     true,
+		},
+		{
+			name:     "TextPlainMayNotRefineToPNG",
+			declared: "text/plain",
+			stored:   "image/png",
+			want:     false,
+		},
+		{
+			name:     "JSONMustStillMatchExactly",
+			declared: "application/json",
+			stored:   "text/plain",
+			want:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, chatfiles.IsCompatibleUploadMediaType(tt.declared, tt.stored))
+		})
+	}
+}
+
 func TestIsInlineSafe(t *testing.T) {
 	t.Parallel()
 

@@ -4005,12 +4005,14 @@ func (api *API) postChatFile(rw http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	// The mismatch check below is security-critical: it prevents a text
-	// body from being uploaded under an image Content-Type (or vice
-	// versa) now that multiple safe media types share one classifier.
-	// Combined with the X-Content-Type-Options: nosniff header applied
-	// globally, this ensures browsers respect the stored media type.
-	if detected != contentType {
+	// The compatibility check below is security-critical: it keeps exact
+	// media-type matching by default while allowing safe text/plain
+	// refinements such as JSON, CSV, and Markdown now that upload
+	// classification can return richer stored media types. Combined with
+	// the X-Content-Type-Options: nosniff header applied globally, this
+	// still prevents clients from smuggling binary or active content under
+	// a safer declared Content-Type.
+	if !chatfiles.IsCompatibleUploadMediaType(contentType, detected) {
 		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
 			Message: "File content type does not match Content-Type header.",
 			Detail:  fmt.Sprintf("Header declared %q but file content was detected as %q.", contentType, detected),
