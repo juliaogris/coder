@@ -3,6 +3,7 @@ package chatd
 import (
 	"charm.land/fantasy"
 	"github.com/google/uuid"
+	"golang.org/x/xerrors"
 
 	"github.com/coder/coder/v2/coderd/x/chatd/chatloop"
 	"github.com/coder/coder/v2/coderd/x/chatd/chatprompt"
@@ -15,7 +16,7 @@ func buildAssistantPartsForPersist(
 	toolResults []fantasy.ToolResultContent,
 	step chatloop.PersistedStep,
 	toolNameToConfigID map[string]uuid.UUID,
-) []codersdk.ChatMessagePart {
+) ([]codersdk.ChatMessagePart, error) {
 	parts := make([]codersdk.ChatMessagePart, 0, len(assistantBlocks)+len(toolResults))
 	for _, block := range assistantBlocks {
 		part := chatprompt.PartFromContent(block)
@@ -37,7 +38,16 @@ func buildAssistantPartsForPersist(
 		parts = append(parts, part)
 	}
 	for _, tr := range toolResults {
-		parts = append(parts, chattool.AttachmentPartsFromMetadata(tr.ClientMetadata)...)
+		attachmentParts, err := chattool.AttachmentPartsFromMetadata(tr.ClientMetadata)
+		if err != nil {
+			return nil, xerrors.Errorf(
+				"decode attachments for tool %q (%s): %w",
+				tr.ToolName,
+				tr.ToolCallID,
+				err,
+			)
+		}
+		parts = append(parts, attachmentParts...)
 	}
-	return parts
+	return parts, nil
 }

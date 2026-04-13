@@ -5164,12 +5164,15 @@ func (p *Server) runChat(
 		// Pre-marshal all content outside the transaction so the
 		// FOR UPDATE lock is held only for the INSERT statements.
 		// Marshaling is pure CPU work with no database dependency.
-		assistantParts := buildAssistantPartsForPersist(
+		assistantParts, err := buildAssistantPartsForPersist(
 			assistantBlocks,
 			toolResults,
 			step,
 			toolNameToConfigID,
 		)
+		if err != nil {
+			return xerrors.Errorf("build assistant parts: %w", err)
+		}
 
 		var assistantContent pqtype.NullRawMessage
 		if len(assistantParts) > 0 {
@@ -5208,7 +5211,7 @@ func (p *Server) runChat(
 		totalCostMicros := chatcost.CalculateTotalCostMicros(usageForCost, callConfig.Cost)
 
 		var insertedMessages []database.ChatMessage
-		err := p.db.InTx(func(tx database.Store) error {
+		err = p.db.InTx(func(tx database.Store) error {
 			// Verify this worker still owns the chat before
 			// inserting messages. This closes the race where
 			// EditMessage soft-deletes history and clears worker_id
@@ -5507,6 +5510,7 @@ func (p *Server) runChat(
 				workspaceCtx.getWorkspaceConn,
 				storeChatAttachment,
 				quartz.NewReal(),
+				p.logger.Named("computer_use"),
 			),
 		})
 	}

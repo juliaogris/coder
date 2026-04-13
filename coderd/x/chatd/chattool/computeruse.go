@@ -8,6 +8,7 @@ import (
 	"charm.land/fantasy"
 	fantasyanthropic "charm.land/fantasy/providers/anthropic"
 
+	"cdr.dev/slog/v3"
 	"github.com/coder/coder/v2/codersdk/workspacesdk"
 	"github.com/coder/quartz"
 )
@@ -30,6 +31,7 @@ type computerUseTool struct {
 	storeFile        StoreFileFunc
 	providerOptions  fantasy.ProviderOptions
 	clock            quartz.Clock
+	logger           slog.Logger
 }
 
 // NewComputerUseTool creates a computer use AgentTool that delegates to the
@@ -41,6 +43,7 @@ func NewComputerUseTool(
 	getWorkspaceConn func(ctx context.Context) (workspacesdk.AgentConn, error),
 	storeFile StoreFileFunc,
 	clock quartz.Clock,
+	logger slog.Logger,
 ) fantasy.AgentTool {
 	return &computerUseTool{
 		declaredWidth:    declaredWidth,
@@ -48,6 +51,7 @@ func NewComputerUseTool(
 		getWorkspaceConn: getWorkspaceConn,
 		storeFile:        storeFile,
 		clock:            clock,
+		logger:           logger,
 	}
 }
 
@@ -183,27 +187,35 @@ func (t *computerUseTool) captureSharedScreenshot(
 	conn workspacesdk.AgentConn,
 	declaredWidth, declaredHeight int,
 ) (fantasy.ToolResponse, error) {
-	if t.storeFile == nil {
-		return fantasy.NewTextErrorResponse("file storage is not configured"), nil
-	}
-
 	screenResp, err := executeScreenshotAction(ctx, conn, declaredWidth, declaredHeight)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(
 			fmt.Sprintf("screenshot failed: %v", err),
 		), nil
 	}
+
 	response := fantasy.NewImageResponse([]byte(screenResp.ScreenshotData), "image/png")
+	attachmentName := fmt.Sprintf(
+		"screenshot-%s.png",
+		t.clock.Now().UTC().Format("2006-01-02T15-04-05Z"),
+	)
+	if t.storeFile == nil {
+		t.logger.Warn(ctx, "screenshot attachment storage is not configured")
+		return response, nil
+	}
+
 	attachment, storeErr := storeScreenshotAttachment(
 		ctx,
 		t.storeFile,
-		fmt.Sprintf("screenshot-%s.png", t.clock.Now().UTC().Format("2006-01-02T15-04-05Z")),
+		attachmentName,
 		screenResp.ScreenshotData,
 	)
 	if storeErr != nil {
-		return fantasy.NewTextErrorResponse(
-			fmt.Sprintf("failed to store screenshot attachment: %v", storeErr),
-		), nil
+		t.logger.Warn(ctx, "failed to persist screenshot attachment",
+			slog.F("attachment_name", attachmentName),
+			slog.Error(storeErr),
+		)
+		return response, nil
 	}
 	return WithAttachments(response, attachment), nil
 }

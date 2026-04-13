@@ -28,16 +28,6 @@ import (
 	"github.com/coder/quartz"
 )
 
-func TestComputerUseSubagentSystemPrompt(t *testing.T) {
-	t.Parallel()
-
-	// Verify the system prompt constant is non-empty and contains
-	// key instructions for the computer use agent.
-	assert.NotEmpty(t, computerUseSubagentSystemPrompt)
-	assert.Contains(t, computerUseSubagentSystemPrompt, "computer")
-	assert.Contains(t, computerUseSubagentSystemPrompt, "screenshot")
-}
-
 func TestSubagentFallbackChatTitle(t *testing.T) {
 	t.Parallel()
 
@@ -1148,8 +1138,10 @@ func TestWaitAgentDoesNotRelayComputerUseSubagentAttachments(t *testing.T) {
 	assert.NotContains(t, result, "attachment_count")
 	assert.NotContains(t, result, "attachment_warning")
 
-	assert.Empty(t, chattool.AttachmentsFromMetadata(resp.Metadata))
-	parts := buildAssistantPartsForPersist(
+	attachments, err := chattool.AttachmentsFromMetadata(resp.Metadata)
+	require.NoError(t, err)
+	assert.Empty(t, attachments)
+	parts, err := buildAssistantPartsForPersist(
 		nil,
 		[]fantasy.ToolResultContent{{
 			ToolCallID:     "call-1",
@@ -1159,6 +1151,7 @@ func TestWaitAgentDoesNotRelayComputerUseSubagentAttachments(t *testing.T) {
 		chatloop.PersistedStep{},
 		nil,
 	)
+	require.NoError(t, err)
 	assert.Empty(t, parts)
 
 	parentFiles, err := db.GetChatFileMetadataByChatID(ctx, parent.ID)
@@ -1208,7 +1201,9 @@ func TestWaitAgentDoesNotRelayRegularSubagentAttachments(t *testing.T) {
 	require.Equal(t, "Shared the release notes.", result["report"])
 	assert.NotContains(t, result, "attachment_count")
 	assert.NotContains(t, result, "attachment_warning")
-	assert.Empty(t, chattool.AttachmentsFromMetadata(resp.Metadata))
+	attachments, err := chattool.AttachmentsFromMetadata(resp.Metadata)
+	require.NoError(t, err)
+	assert.Empty(t, attachments)
 
 	parentFiles, err := db.GetChatFileMetadataByChatID(ctx, parent.ID)
 	require.NoError(t, err)

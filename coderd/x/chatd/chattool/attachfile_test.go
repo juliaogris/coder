@@ -95,10 +95,11 @@ func TestAttachFile(t *testing.T) {
 		assert.Equal(t, "text/plain", decoded.MediaType)
 		assert.Equal(t, len(content), decoded.Size)
 
-		attachments := chattool.AttachmentsFromMetadata(resp.Metadata)
+		attachments, err := chattool.AttachmentsFromMetadata(resp.Metadata)
+		require.NoError(t, err)
 		require.Len(t, attachments, 1)
 		assert.Equal(t, uuid.MustParse(decoded.FileID), attachments[0].FileID)
-		assert.Equal(t, decoded.MediaType, attachments[0].MimeType)
+		assert.Equal(t, decoded.MediaType, attachments[0].MediaType)
 		assert.Equal(t, decoded.Name, attachments[0].Name)
 	})
 
@@ -175,20 +176,16 @@ func TestAttachFile(t *testing.T) {
 		assert.True(t, resp.IsError)
 		assert.Contains(t, resp.Content, `unsupported attachment type "image/svg+xml"`)
 	})
-
-	t.Run("SVGLookingTextFileAllowedWhenNamedText", func(t *testing.T) {
+	t.Run("SVGRejectedEvenWhenNamedText", func(t *testing.T) {
 		t.Parallel()
 		ctrl := gomock.NewController(t)
 		mockConn := agentconnmock.NewMockAgentConn(ctrl)
-		content := `<svg xmlns="http://www.w3.org/2000/svg"><text>Hello</text></svg>`
 		mockConn.EXPECT().
 			ReadFile(gomock.Any(), "/home/coder/notes.txt", int64(0), int64(10<<20+1)).
-			Return(io.NopCloser(strings.NewReader(content)), "text/plain", nil)
+			Return(io.NopCloser(strings.NewReader(`<svg xmlns="http://www.w3.org/2000/svg"><text>Hello</text></svg>`)), "text/plain", nil)
 
-		var storedType string
-		tool := newAttachFileTool(t, mockConn, func(_ context.Context, _ string, mediaType string, _ []byte) (uuid.UUID, error) {
-			storedType = mediaType
-			return uuid.MustParse("dddddddd-eeee-ffff-0000-111111111111"), nil
+		tool := newAttachFileTool(t, mockConn, func(_ context.Context, _ string, _ string, _ []byte) (uuid.UUID, error) {
+			return uuid.Nil, xerrors.New("should not be called")
 		})
 		resp, err := tool.Run(context.Background(), fantasy.ToolCall{
 			ID:    "call-svg-text",
@@ -196,8 +193,8 @@ func TestAttachFile(t *testing.T) {
 			Input: `{"path":"/home/coder/notes.txt"}`,
 		})
 		require.NoError(t, err)
-		assert.False(t, resp.IsError)
-		assert.Equal(t, "text/plain", storedType)
+		assert.True(t, resp.IsError)
+		assert.Contains(t, resp.Content, `unsupported attachment type "image/svg+xml"`)
 	})
 
 	t.Run("OversizedFileRejected", func(t *testing.T) {

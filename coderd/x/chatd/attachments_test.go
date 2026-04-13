@@ -20,14 +20,14 @@ func TestBuildAssistantPartsForPersist_PromotesToolAttachments(t *testing.T) {
 	response := chattool.WithAttachments(
 		fantasy.NewTextResponse(`{"ok":true}`),
 		chattool.AttachmentMetadata{
-			FileID:   fileID,
-			MimeType: "image/png",
-			Name:     "screenshot.png",
+			FileID:    fileID,
+			MediaType: "image/png",
+			Name:      "screenshot.png",
 		},
 	)
 	toolCallAt := time.Date(2026, time.April, 10, 0, 0, 0, 0, time.UTC)
 
-	parts := buildAssistantPartsForPersist(
+	parts, err := buildAssistantPartsForPersist(
 		[]fantasy.Content{fantasy.TextContent{Text: "Here is the screenshot."}},
 		[]fantasy.ToolResultContent{{
 			ToolCallID:       "call-1",
@@ -42,6 +42,7 @@ func TestBuildAssistantPartsForPersist_PromotesToolAttachments(t *testing.T) {
 		},
 		nil,
 	)
+	require.NoError(t, err)
 
 	require.Len(t, parts, 2)
 	require.Equal(t, codersdk.ChatMessagePartTypeText, parts[0].Type)
@@ -60,21 +61,38 @@ func TestBuildAssistantPartsForPersist_OnlyAttachments(t *testing.T) {
 	response := chattool.WithAttachments(
 		fantasy.NewTextResponse(`{"ok":true}`),
 		chattool.AttachmentMetadata{
-			FileID:   fileID,
-			MimeType: "text/plain",
-			Name:     "build.log",
+			FileID:    fileID,
+			MediaType: "text/plain",
+			Name:      "build.log",
 		},
 	)
 
-	parts := buildAssistantPartsForPersist(
+	parts, err := buildAssistantPartsForPersist(
 		nil,
 		[]fantasy.ToolResultContent{{ClientMetadata: response.Metadata}},
 		chatloop.PersistedStep{},
 		nil,
 	)
+	require.NoError(t, err)
 
 	require.Len(t, parts, 1)
 	require.Equal(t, codersdk.ChatMessagePartTypeFile, parts[0].Type)
 	require.Equal(t, fileID, parts[0].FileID.UUID)
 	require.Equal(t, "build.log", parts[0].Name)
+}
+
+func TestBuildAssistantPartsForPersist_InvalidAttachmentMetadataFails(t *testing.T) {
+	t.Parallel()
+
+	_, err := buildAssistantPartsForPersist(
+		nil,
+		[]fantasy.ToolResultContent{{
+			ToolCallID:     "call-1",
+			ToolName:       "attach_file",
+			ClientMetadata: `{"attachments":[{"file_id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}]}`,
+		}},
+		chatloop.PersistedStep{},
+		nil,
+	)
+	require.ErrorContains(t, err, "missing media_type")
 }

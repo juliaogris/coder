@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"cdr.dev/slog/v3/sloggers/slogtest"
 	"github.com/coder/coder/v2/coderd/database"
 	"github.com/coder/coder/v2/coderd/database/dbmock"
 	"github.com/coder/coder/v2/codersdk"
@@ -20,7 +19,7 @@ func TestStoreChatAttachment_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	db := dbmock.NewMockStore(ctrl)
 	tx := dbmock.NewMockStore(ctrl)
-	server := &Server{db: db, logger: slogtest.Make(t, nil)}
+	server := &Server{db: db}
 
 	chatID := uuid.New()
 	ownerID := uuid.New()
@@ -62,7 +61,7 @@ func TestStoreChatAttachment_StrictCapError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	db := dbmock.NewMockStore(ctrl)
 	tx := dbmock.NewMockStore(ctrl)
-	server := &Server{db: db, logger: slogtest.Make(t, nil)}
+	server := &Server{db: db}
 
 	chatID := uuid.New()
 	ownerID := uuid.New()
@@ -104,7 +103,7 @@ func TestStoreChatAttachment_LinkError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	db := dbmock.NewMockStore(ctrl)
 	tx := dbmock.NewMockStore(ctrl)
-	server := &Server{db: db, logger: slogtest.Make(t, nil)}
+	server := &Server{db: db}
 
 	chatID := uuid.New()
 	ownerID := uuid.New()

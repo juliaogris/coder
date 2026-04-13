@@ -2,7 +2,6 @@ package chattool
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
 
 	"charm.land/fantasy"
@@ -56,12 +55,14 @@ func executeAttachFileTool(
 	if path == "" {
 		return fantasy.NewTextErrorResponse("path is required (use an absolute path, e.g. /home/coder/build.log)"), nil
 	}
-	name := strings.TrimSpace(args.Name)
-	if name == "" {
-		name = filepath.Base(path)
-	}
 
-	attachment, size, err := storeWorkspaceAttachment(ctx, conn, path, name, storeFile)
+	attachment, size, err := storeWorkspaceAttachment(
+		ctx,
+		conn,
+		path,
+		strings.TrimSpace(args.Name),
+		storeFile,
+	)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
@@ -71,7 +72,7 @@ func executeAttachFileTool(
 		"path":       path,
 		"file_id":    attachment.FileID.String(),
 		"name":       attachment.Name,
-		"media_type": attachment.MimeType,
+		"media_type": attachment.MediaType,
 		"size":       size,
 	}), attachment), nil
 }

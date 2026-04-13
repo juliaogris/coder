@@ -1,7 +1,6 @@
 package coderd
 
 import (
-	"bufio"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -13,7 +12,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -3226,33 +3224,6 @@ const (
 	maxChatFileName = 255
 )
 
-// allowedChatFileMIMETypes lists the content types accepted for chat
-// file uploads. SVG is explicitly excluded because it can contain scripts.
-var allowedChatFileMIMETypes = map[string]bool{
-	"image/png":     true,
-	"image/jpeg":    true,
-	"image/gif":     true,
-	"image/webp":    true,
-	"text/plain":    true,
-	"image/svg+xml": false, // SVG can contain scripts.
-}
-
-func allowedChatFileMIMETypesStr() string {
-	var types []string
-	for t, allowed := range allowedChatFileMIMETypes {
-		if allowed {
-			types = append(types, t)
-		}
-	}
-	slices.Sort(types)
-	return strings.Join(types, ", ")
-}
-
-// detectChatFileType detects the MIME type of the given data.
-func detectChatFileType(data []byte) string {
-	return chatfiles.NormalizeMediaType(chatfiles.DetectContentType(data))
-}
-
 //nolint:revive // get-return: revive assumes get* must be a getter, but this is an HTTP handler.
 func (api *API) getChatSystemPrompt(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -3977,67 +3948,10 @@ func (api *API) postChatFile(rw http.ResponseWriter, r *http.Request) {
 	if mediaType, _, err := mime.ParseMediaType(contentType); err == nil {
 		contentType = mediaType
 	}
-
-	if allowed, ok := allowedChatFileMIMETypes[contentType]; !ok || !allowed {
+	if !chatfiles.IsAllowedStoredMediaType(contentType) {
 		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
 			Message: "Unsupported file type.",
-			Detail:  fmt.Sprintf("Allowed types: %s.", allowedChatFileMIMETypesStr()),
-		})
-		return
-	}
-
-	r.Body = http.MaxBytesReader(rw, r.Body, maxChatFileSize)
-	br := bufio.NewReader(r.Body)
-
-	// Peek at the leading bytes to sniff the real content type
-	// before reading the entire body.
-	peek, peekErr := br.Peek(512)
-	if peekErr != nil && !errors.Is(peekErr, io.EOF) && !errors.Is(peekErr, bufio.ErrBufferFull) {
-		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
-			Message: "Failed to read file from request.",
-			Detail:  peekErr.Error(),
-		})
-		return
-	}
-
-	// Verify the actual content matches an allowed file type so that
-	// a client cannot spoof Content-Type to serve active content.
-	detected := detectChatFileType(peek)
-	if allowed, ok := allowedChatFileMIMETypes[detected]; !ok || !allowed {
-		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
-			Message: "Unsupported file type.",
-			Detail:  fmt.Sprintf("Allowed types: %s.", allowedChatFileMIMETypesStr()),
-		})
-		return
-	}
-	// The mismatch check below is security-critical: it prevents a text
-	// body from being uploaded under an image Content-Type (or vice
-	// versa) now that both text/plain and image types are in the
-	// allowlist. Combined with the X-Content-Type-Options: nosniff
-	// header applied globally, this ensures browsers respect the
-	// stored MIME type.
-	if detected != contentType {
-		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
-			Message: "File content type does not match Content-Type header.",
-			Detail:  fmt.Sprintf("Header declared %q but file content was detected as %q.", contentType, detected),
-		})
-		return
-	}
-
-	// Read the full body now that we know the type is valid.
-	data, err := io.ReadAll(br)
-	if err != nil {
-		var maxBytesErr *http.MaxBytesError
-		if errors.As(err, &maxBytesErr) {
-			httpapi.Write(ctx, rw, http.StatusRequestEntityTooLarge, codersdk.Response{
-				Message: "File too large.",
-				Detail:  fmt.Sprintf("Maximum file size is %d bytes.", maxChatFileSize),
-			})
-			return
-		}
-		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
-			Message: "Failed to read file from request.",
-			Detail:  err.Error(),
+			Detail:  fmt.Sprintf("Allowed types: %s.", chatfiles.AllowedStoredMediaTypesString()),
 		})
 		return
 	}
@@ -4063,6 +3977,46 @@ func (api *API) postChatFile(rw http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	r.Body = http.MaxBytesReader(rw, r.Body, maxChatFileSize)
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			httpapi.Write(ctx, rw, http.StatusRequestEntityTooLarge, codersdk.Response{
+				Message: "File too large.",
+				Detail:  fmt.Sprintf("Maximum file size is %d bytes.", maxChatFileSize),
+			})
+			return
+		}
+		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
+			Message: "Failed to read file from request.",
+			Detail:  err.Error(),
+		})
+		return
+	}
+
+	// Verify the actual content matches an allowed file type so that
+	// a client cannot spoof Content-Type to serve active content.
+	detected := chatfiles.ClassifyStoredMediaType(filename, data)
+	if !chatfiles.IsAllowedStoredMediaType(detected) {
+		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
+			Message: "Unsupported file type.",
+			Detail:  fmt.Sprintf("Allowed types: %s.", chatfiles.AllowedStoredMediaTypesString()),
+		})
+		return
+	}
+	// The mismatch check below is security-critical: it prevents a text
+	// body from being uploaded under an image Content-Type (or vice
+	// versa) now that multiple safe media types share one classifier.
+	// Combined with the X-Content-Type-Options: nosniff header applied
+	// globally, this ensures browsers respect the stored media type.
+	if detected != contentType {
+		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
+			Message: "File content type does not match Content-Type header.",
+			Detail:  fmt.Sprintf("Header declared %q but file content was detected as %q.", contentType, detected),
+		})
+		return
+	}
 	chatFile, err := api.Database.InsertChatFile(ctx, database.InsertChatFileParams{
 		OwnerID:        apiKey.UserID,
 		OrganizationID: orgID,

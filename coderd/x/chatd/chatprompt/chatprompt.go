@@ -818,7 +818,7 @@ func toolResultContentToPart(content fantasy.ToolResultContent) codersdk.ChatMes
 			MimeType: output.MediaType,
 			Text:     output.Text,
 		}
-		if attachments := chattool.AttachmentsFromMetadata(content.ClientMetadata); len(attachments) > 0 {
+		if attachments := chattool.AttachmentsFromMetadataLax(content.ClientMetadata); len(attachments) > 0 {
 			mediaResult.AttachmentFileID = attachments[0].FileID.String()
 			mediaResult.AttachmentName = attachments[0].Name
 		}
