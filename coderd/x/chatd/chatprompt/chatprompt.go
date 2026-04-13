@@ -16,6 +16,7 @@ import (
 
 	"cdr.dev/slog/v3"
 	"github.com/coder/coder/v2/coderd/database"
+	"github.com/coder/coder/v2/coderd/x/chatd/chattool"
 	"github.com/coder/coder/v2/codersdk"
 )
 
@@ -812,11 +813,16 @@ func toolResultContentToPart(content fantasy.ToolResultContent) codersdk.ChatMes
 		}
 	case fantasy.ToolResultOutputContentMedia:
 		isMedia = true
-		result, _ = json.Marshal(persistedMediaResult{
+		mediaResult := persistedMediaResult{
 			Data:     output.Data,
 			MimeType: output.MediaType,
 			Text:     output.Text,
-		})
+		}
+		if attachments := chattool.AttachmentsFromMetadata(content.ClientMetadata); len(attachments) > 0 {
+			mediaResult.AttachmentFileID = attachments[0].FileID.String()
+			mediaResult.AttachmentName = attachments[0].Name
+		}
+		result, _ = json.Marshal(mediaResult)
 	default:
 		result = []byte(`{}`)
 	}
@@ -1276,9 +1282,11 @@ func toolResultPartToMessagePart(logger slog.Logger, part codersdk.ChatMessagePa
 // struct tag (json:"media_type"). Do not change it without
 // updating both paths.
 type persistedMediaResult struct {
-	Data     string `json:"data"`
-	MimeType string `json:"mime_type"`
-	Text     string `json:"text"`
+	Data             string `json:"data"`
+	MimeType         string `json:"mime_type"`
+	Text             string `json:"text"`
+	AttachmentFileID string `json:"attachment_file_id,omitempty"`
+	AttachmentName   string `json:"attachment_name,omitempty"`
 }
 
 // partsToMessageParts converts SDK chat message parts into fantasy

@@ -226,6 +226,15 @@ func TestWaitAgentComputerUseRecording(t *testing.T) {
 		"expected name to start with 'recording-', got: %s", chatFile.Name)
 	assert.Equal(t, user.ID, chatFile.OwnerID)
 	assert.Equal(t, fakeMp4, chatFile.Data)
+
+	parentFiles, err := db.GetChatFileMetadataByChatID(ctx, parent.ID)
+	require.NoError(t, err)
+	require.Len(t, parentFiles, 1)
+	assert.Equal(t, fileUUID, parentFiles[0].ID)
+
+	childFiles, err := db.GetChatFileMetadataByChatID(ctx, child.ID)
+	require.NoError(t, err)
+	assert.Empty(t, childFiles)
 }
 
 // TestWaitAgentComputerUseRecordingWithThumbnail verifies the
@@ -307,6 +316,16 @@ func TestWaitAgentComputerUseRecordingWithThumbnail(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "image/jpeg", thumbFile.Mimetype)
 	assert.Equal(t, fakeThumb, thumbFile.Data)
+
+	parentFiles, err := db.GetChatFileMetadataByChatID(ctx, parent.ID)
+	require.NoError(t, err)
+	require.Len(t, parentFiles, 2)
+	assert.Equal(t, fileUUID, parentFiles[0].ID)
+	assert.Equal(t, thumbUUID, parentFiles[1].ID)
+
+	childFiles, err := db.GetChatFileMetadataByChatID(ctx, child.ID)
+	require.NoError(t, err)
+	assert.Empty(t, childFiles)
 }
 
 // TestWaitAgentNonComputerUseNoRecording verifies that when the

@@ -27,6 +27,7 @@ type computerUseTool struct {
 	declaredWidth    int
 	declaredHeight   int
 	getWorkspaceConn func(ctx context.Context) (workspacesdk.AgentConn, error)
+	storeFile        StoreFileFunc
 	providerOptions  fantasy.ProviderOptions
 	clock            quartz.Clock
 }
@@ -38,22 +39,26 @@ type computerUseTool struct {
 func NewComputerUseTool(
 	declaredWidth, declaredHeight int,
 	getWorkspaceConn func(ctx context.Context) (workspacesdk.AgentConn, error),
+	storeFile StoreFileFunc,
 	clock quartz.Clock,
 ) fantasy.AgentTool {
 	return &computerUseTool{
 		declaredWidth:    declaredWidth,
 		declaredHeight:   declaredHeight,
 		getWorkspaceConn: getWorkspaceConn,
+		storeFile:        storeFile,
 		clock:            clock,
 	}
 }
 
 func (*computerUseTool) Info() fantasy.ToolInfo {
 	return fantasy.ToolInfo{
-		Name:        "computer",
-		Description: "Control the desktop: take screenshots, move the mouse, click, type, and scroll.",
-		Parameters:  map[string]any{},
-		Required:    []string{},
+		Name: "computer",
+		Description: "Control the desktop: take screenshots, move the mouse, click, type, and scroll. " +
+			"Use an explicit screenshot action when you want to share a screenshot with the user; " +
+			"those screenshots are also attached to the chat.",
+		Parameters: map[string]any{},
+		Required:   []string{},
 	}
 }
 
@@ -110,38 +115,12 @@ func (t *computerUseTool) Run(ctx context.Context, call fantasy.ToolCall) (fanta
 		case <-ctx.Done():
 		case <-timer.C:
 		}
-		screenshotAction := workspacesdk.DesktopAction{
-			Action:       "screenshot",
-			ScaledWidth:  &declaredWidth,
-			ScaledHeight: &declaredHeight,
-		}
-		screenResp, sErr := conn.ExecuteDesktopAction(ctx, screenshotAction)
-		if sErr != nil {
-			return fantasy.NewTextErrorResponse(
-				fmt.Sprintf("screenshot failed: %v", sErr),
-			), nil
-		}
-		return fantasy.NewImageResponse(
-			[]byte(screenResp.ScreenshotData), "image/png",
-		), nil
+		return t.captureScreenshot(ctx, conn, declaredWidth, declaredHeight)
 	}
 
 	// For screenshot action, use ExecuteDesktopAction.
 	if input.Action == fantasyanthropic.ActionScreenshot {
-		screenshotAction := workspacesdk.DesktopAction{
-			Action:       "screenshot",
-			ScaledWidth:  &declaredWidth,
-			ScaledHeight: &declaredHeight,
-		}
-		screenResp, sErr := conn.ExecuteDesktopAction(ctx, screenshotAction)
-		if sErr != nil {
-			return fantasy.NewTextErrorResponse(
-				fmt.Sprintf("screenshot failed: %v", sErr),
-			), nil
-		}
-		return fantasy.NewImageResponse(
-			[]byte(screenResp.ScreenshotData), "image/png",
-		), nil
+		return t.captureSharedScreenshot(ctx, conn, declaredWidth, declaredHeight)
 	}
 
 	// Build the action request.
@@ -182,21 +161,64 @@ func (t *computerUseTool) Run(ctx context.Context, call fantasy.ToolCall) (fanta
 	}
 
 	// Take a screenshot after every action (Anthropic pattern).
+	return t.captureScreenshot(ctx, conn, declaredWidth, declaredHeight)
+}
+
+func (*computerUseTool) captureScreenshot(
+	ctx context.Context,
+	conn workspacesdk.AgentConn,
+	declaredWidth, declaredHeight int,
+) (fantasy.ToolResponse, error) {
+	screenResp, err := executeScreenshotAction(ctx, conn, declaredWidth, declaredHeight)
+	if err != nil {
+		return fantasy.NewTextErrorResponse(
+			fmt.Sprintf("screenshot failed: %v", err),
+		), nil
+	}
+	return fantasy.NewImageResponse([]byte(screenResp.ScreenshotData), "image/png"), nil
+}
+
+func (t *computerUseTool) captureSharedScreenshot(
+	ctx context.Context,
+	conn workspacesdk.AgentConn,
+	declaredWidth, declaredHeight int,
+) (fantasy.ToolResponse, error) {
+	if t.storeFile == nil {
+		return fantasy.NewTextErrorResponse("file storage is not configured"), nil
+	}
+
+	screenResp, err := executeScreenshotAction(ctx, conn, declaredWidth, declaredHeight)
+	if err != nil {
+		return fantasy.NewTextErrorResponse(
+			fmt.Sprintf("screenshot failed: %v", err),
+		), nil
+	}
+	response := fantasy.NewImageResponse([]byte(screenResp.ScreenshotData), "image/png")
+	attachment, storeErr := storeScreenshotAttachment(
+		ctx,
+		t.storeFile,
+		fmt.Sprintf("screenshot-%s.png", t.clock.Now().UTC().Format("2006-01-02T15-04-05Z")),
+		screenResp.ScreenshotData,
+	)
+	if storeErr != nil {
+		return fantasy.NewTextErrorResponse(
+			fmt.Sprintf("failed to store screenshot attachment: %v", storeErr),
+		), nil
+	}
+	return WithAttachments(response, attachment), nil
+}
+
+func executeScreenshotAction(
+	ctx context.Context,
+	conn workspacesdk.AgentConn,
+	declaredWidth, declaredHeight int,
+) (workspacesdk.DesktopActionResponse, error) {
 	screenshotAction := workspacesdk.DesktopAction{
 		Action:       "screenshot",
 		ScaledWidth:  &declaredWidth,
 		ScaledHeight: &declaredHeight,
 	}
-	screenResp, sErr := conn.ExecuteDesktopAction(ctx, screenshotAction)
-	if sErr != nil {
-		return fantasy.NewTextErrorResponse(
-			fmt.Sprintf("screenshot failed: %v", sErr),
-		), nil
-	}
-
-	return fantasy.NewImageResponse(
-		[]byte(screenResp.ScreenshotData), "image/png",
-	), nil
+	return conn.ExecuteDesktopAction(ctx, screenshotAction)
 }
 
 func (t *computerUseTool) declaredActionDimensions() (declaredWidth, declaredHeight int) {
@@ -205,11 +227,4 @@ func (t *computerUseTool) declaredActionDimensions() (declaredWidth, declaredHei
 		return geometry.DeclaredWidth, geometry.DeclaredHeight
 	}
 	return t.declaredWidth, t.declaredHeight
-}
-
-// computeScaledScreenshotSize preserves the historical helper name while using
-// the shared declared-geometry selection logic.
-func computeScaledScreenshotSize(width, height int) (scaledWidth int, scaledHeight int) {
-	geometry := workspacesdk.NewDesktopGeometry(width, height)
-	return geometry.DeclaredWidth, geometry.DeclaredHeight
 }

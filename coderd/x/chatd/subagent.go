@@ -40,6 +40,8 @@ Your primary tool is the "computer" tool which lets you interact with the deskto
 
 Guidelines:
 - Always start by taking a screenshot to see the current state of the desktop.
+- Use wait or ordinary actions when you only need a screenshot for your own reasoning.
+- Use an explicit screenshot action when you want to share a durable screenshot with the user; those screenshots are attached to the chat automatically.
 - Be precise with coordinates when clicking or typing.
 - Wait for UI elements to load before interacting with them.
 - If an action doesn't produce the expected result, try alternative approaches.
@@ -253,6 +255,7 @@ func (p *Server) subagentTools(ctx context.Context, currentChat func() database.
 					defer stopCancel()
 					recResult = p.stopAndStoreRecording(stopCtx, agentConn,
 						recordingID, parent.OwnerID, parent.WorkspaceID)
+					recResult = p.retainRecordingArtifactsInParent(stopCtx, parent.ID, recResult)
 				}
 				resp := map[string]any{
 					"chat_id": targetChatID.String(),
@@ -895,6 +898,113 @@ func (p *Server) checkSubagentCompletion(
 	}
 
 	return chat, report, true, nil
+}
+
+func (p *Server) retainRecordingArtifactsInParent(
+	ctx context.Context,
+	parentChatID uuid.UUID,
+	result recordingResult,
+) recordingResult {
+	recordingFileID := strings.TrimSpace(result.recordingFileID)
+	if recordingFileID == "" {
+		result.thumbnailFileID = ""
+		return result
+	}
+
+	recordingUUID, err := uuid.Parse(recordingFileID)
+	if err != nil {
+		p.logger.Warn(ctx, "recording file ID was invalid before linking to parent chat",
+			slog.F("parent_chat_id", parentChatID),
+			slog.F("recording_file_id", recordingFileID),
+			slog.Error(err),
+		)
+		result.recordingFileID = ""
+		result.thumbnailFileID = ""
+		return result
+	}
+
+	linkedRecordingIDs, skippedCount, err := p.linkChatFilesBestEffort(ctx, parentChatID, []uuid.UUID{recordingUUID})
+	if err != nil || len(linkedRecordingIDs) == 0 {
+		fields := []slog.Field{
+			slog.F("parent_chat_id", parentChatID),
+			slog.F("recording_file_id", recordingFileID),
+			slog.F("skipped_count", skippedCount),
+		}
+		if err != nil {
+			fields = append(fields, slog.Error(err))
+		}
+		p.logger.Warn(ctx, "failed linking recording artifact to parent chat", fields...)
+		result.recordingFileID = ""
+		result.thumbnailFileID = ""
+		return result
+	}
+
+	thumbnailFileID := strings.TrimSpace(result.thumbnailFileID)
+	if thumbnailFileID == "" {
+		return result
+	}
+
+	thumbnailUUID, err := uuid.Parse(thumbnailFileID)
+	if err != nil {
+		p.logger.Warn(ctx, "thumbnail file ID was invalid before linking to parent chat",
+			slog.F("parent_chat_id", parentChatID),
+			slog.F("thumbnail_file_id", thumbnailFileID),
+			slog.Error(err),
+		)
+		result.thumbnailFileID = ""
+		return result
+	}
+
+	linkedThumbnailIDs, skippedCount, err := p.linkChatFilesBestEffort(ctx, parentChatID, []uuid.UUID{thumbnailUUID})
+	if err != nil || len(linkedThumbnailIDs) == 0 {
+		fields := []slog.Field{
+			slog.F("parent_chat_id", parentChatID),
+			slog.F("thumbnail_file_id", thumbnailFileID),
+			slog.F("skipped_count", skippedCount),
+		}
+		if err != nil {
+			fields = append(fields, slog.Error(err))
+		}
+		p.logger.Warn(ctx, "failed linking recording thumbnail to parent chat", fields...)
+		result.thumbnailFileID = ""
+	}
+	return result
+}
+
+func (p *Server) linkChatFilesBestEffort(
+	ctx context.Context,
+	chatID uuid.UUID,
+	fileIDs []uuid.UUID,
+) ([]uuid.UUID, int, error) {
+	uniqueFileIDs := make([]uuid.UUID, 0, len(fileIDs))
+	seen := make(map[uuid.UUID]struct{}, len(fileIDs))
+	for _, fileID := range fileIDs {
+		if fileID == uuid.Nil {
+			continue
+		}
+		if _, ok := seen[fileID]; ok {
+			continue
+		}
+		seen[fileID] = struct{}{}
+		uniqueFileIDs = append(uniqueFileIDs, fileID)
+	}
+
+	linkedIDs := make([]uuid.UUID, 0, len(uniqueFileIDs))
+	for i, fileID := range uniqueFileIDs {
+		rejected, err := p.db.LinkChatFiles(ctx, database.LinkChatFilesParams{
+			ChatID:       chatID,
+			MaxFileLinks: int32(codersdk.MaxChatFileIDs),
+			FileIds:      []uuid.UUID{fileID},
+		})
+		if err != nil {
+			return linkedIDs, len(uniqueFileIDs) - i, xerrors.Errorf("link chat file: %w", err)
+		}
+		if rejected > 0 {
+			return linkedIDs, len(uniqueFileIDs) - i, nil
+		}
+		linkedIDs = append(linkedIDs, fileID)
+	}
+	return linkedIDs, 0, nil
 }
 
 func latestSubagentAssistantMessage(

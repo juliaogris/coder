@@ -5164,36 +5164,18 @@ func (p *Server) runChat(
 		// Pre-marshal all content outside the transaction so the
 		// FOR UPDATE lock is held only for the INSERT statements.
 		// Marshaling is pure CPU work with no database dependency.
+		assistantParts := buildAssistantPartsForPersist(
+			assistantBlocks,
+			toolResults,
+			step,
+			toolNameToConfigID,
+		)
+
 		var assistantContent pqtype.NullRawMessage
-		if len(assistantBlocks) > 0 {
-			sdkParts := make([]codersdk.ChatMessagePart, 0, len(assistantBlocks))
-			for _, block := range assistantBlocks {
-				part := chatprompt.PartFromContent(block)
-				if part.ToolName != "" {
-					if configID, ok := toolNameToConfigID[part.ToolName]; ok {
-						part.MCPServerConfigID = uuid.NullUUID{UUID: configID, Valid: true}
-					}
-				}
-				// Apply recorded timestamps so persisted
-				// tool-call parts carry accurate CreatedAt.
-				if part.Type == codersdk.ChatMessagePartTypeToolCall && part.ToolCallID != "" && step.ToolCallCreatedAt != nil {
-					if ts, ok := step.ToolCallCreatedAt[part.ToolCallID]; ok {
-						part.CreatedAt = &ts
-					}
-				}
-				// Provider-executed tool results appear in
-				// assistantBlocks rather than toolResults,
-				// so apply their timestamps here as well.
-				if part.Type == codersdk.ChatMessagePartTypeToolResult && part.ToolCallID != "" && step.ToolResultCreatedAt != nil {
-					if ts, ok := step.ToolResultCreatedAt[part.ToolCallID]; ok {
-						part.CreatedAt = &ts
-					}
-				}
-				sdkParts = append(sdkParts, part)
-			}
-			finalAssistantText = strings.TrimSpace(contentBlocksToText(sdkParts))
+		if len(assistantParts) > 0 {
+			finalAssistantText = strings.TrimSpace(contentBlocksToText(assistantParts))
 			var marshalErr error
-			assistantContent, marshalErr = chatprompt.MarshalParts(sdkParts)
+			assistantContent, marshalErr = chatprompt.MarshalParts(assistantParts)
 			if marshalErr != nil {
 				return xerrors.Errorf("marshal assistant content: %w", marshalErr)
 			}
@@ -5408,6 +5390,7 @@ func (p *Server) runChat(
 	}
 
 	allowAskUserQuestion := isPlanModeTurn && isRootChat
+	storeChatAttachment := p.newStoreChatAttachmentFunc(&workspaceCtx)
 	tools := []fantasy.AgentTool{
 		chattool.ReadFile(chattool.ReadFileOptions{
 			GetWorkspaceConn: workspaceCtx.getWorkspaceConn,
@@ -5421,6 +5404,10 @@ func (p *Server) runChat(
 			GetWorkspaceConn: workspaceCtx.getWorkspaceConn,
 			ResolvePlanPath:  resolvePlanPathForTools,
 			IsPlanTurn:       isPlanModeTurn,
+		}),
+		chattool.AttachFile(chattool.AttachFileOptions{
+			GetWorkspaceConn: workspaceCtx.getWorkspaceConn,
+			StoreFile:        storeChatAttachment,
 		}),
 		chattool.Execute(chattool.ExecuteOptions{
 			GetWorkspaceConn: workspaceCtx.getWorkspaceConn,
@@ -5518,6 +5505,7 @@ func (p *Server) runChat(
 				desktopGeometry.DeclaredWidth,
 				desktopGeometry.DeclaredHeight,
 				workspaceCtx.getWorkspaceConn,
+				storeChatAttachment,
 				quartz.NewReal(),
 			),
 		})
