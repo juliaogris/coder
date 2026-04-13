@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
-	"path/filepath"
 	"strings"
 
 	"charm.land/fantasy"
@@ -92,9 +91,6 @@ func storeWorkspaceAttachment(
 	if strings.TrimSpace(path) == "" {
 		return AttachmentMetadata{}, 0, xerrors.New("path is required")
 	}
-	if !filepath.IsAbs(path) {
-		return AttachmentMetadata{}, 0, xerrors.New("path must be absolute")
-	}
 	reader, _, err := conn.ReadFile(ctx, path, 0, maxAttachmentSize+1)
 	if err != nil {
 		return AttachmentMetadata{}, 0, err
@@ -106,7 +102,12 @@ func storeWorkspaceAttachment(
 		return AttachmentMetadata{}, 0, err
 	}
 	if strings.TrimSpace(name) == "" {
-		name = filepath.Base(path)
+		path = strings.TrimRight(path, "/\\")
+		if idx := strings.LastIndexAny(path, "/\\"); idx >= 0 {
+			name = path[idx+1:]
+		} else {
+			name = path
+		}
 	}
 	attachment, err := storeAttachmentData(ctx, storeFile, name, path, data)
 	if err != nil {

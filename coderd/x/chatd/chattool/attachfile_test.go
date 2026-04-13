@@ -47,17 +47,20 @@ func TestAttachFile(t *testing.T) {
 		assert.Contains(t, resp.Content, "path is required")
 	})
 
-	t.Run("RelativePathReturnsError", func(t *testing.T) {
+	t.Run("RelativePathErrorComesFromAgent", func(t *testing.T) {
 		t.Parallel()
 		ctrl := gomock.NewController(t)
 		mockConn := agentconnmock.NewMockAgentConn(ctrl)
+		mockConn.EXPECT().
+			ReadFile(gomock.Any(), "notes.txt", int64(0), int64(10<<20+1)).
+			Return(nil, "", xerrors.New(`file path must be absolute: "notes.txt"`))
 		tool := newAttachFileTool(t, mockConn, func(_ context.Context, _ string, _ string, _ []byte) (uuid.UUID, error) { return uuid.Nil, nil })
 		resp, err := tool.Run(context.Background(), fantasy.ToolCall{
 			ID: "call-1", Name: "attach_file", Input: `{"path":"notes.txt"}`,
 		})
 		require.NoError(t, err)
 		assert.True(t, resp.IsError)
-		assert.Contains(t, resp.Content, "path must be absolute")
+		assert.Contains(t, resp.Content, `file path must be absolute: "notes.txt"`)
 	})
 
 	t.Run("ValidTextFileStoresAttachment", func(t *testing.T) {
@@ -101,6 +104,37 @@ func TestAttachFile(t *testing.T) {
 		assert.Equal(t, uuid.MustParse(decoded.FileID), attachments[0].FileID)
 		assert.Equal(t, decoded.MediaType, attachments[0].MediaType)
 		assert.Equal(t, decoded.Name, attachments[0].Name)
+	})
+
+	t.Run("WindowsAbsolutePathUsesBaseName", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		mockConn := agentconnmock.NewMockAgentConn(ctrl)
+		content := "build succeeded\n"
+		mockConn.EXPECT().
+			ReadFile(gomock.Any(), `C:\Users\coder\build.log`, int64(0), int64(10<<20+1)).
+			Return(io.NopCloser(strings.NewReader(content)), "text/plain", nil)
+
+		var storedName string
+		tool := newAttachFileTool(t, mockConn, func(_ context.Context, name string, mediaType string, data []byte) (uuid.UUID, error) {
+			storedName = name
+			assert.Equal(t, "text/plain", mediaType)
+			assert.Equal(t, []byte(content), data)
+			return uuid.MustParse("dddddddd-eeee-ffff-0000-111111111111"), nil
+		})
+		resp, err := tool.Run(context.Background(), fantasy.ToolCall{
+			ID:    "call-windows",
+			Name:  "attach_file",
+			Input: `{"path":"C:\\Users\\coder\\build.log"}`,
+		})
+		require.NoError(t, err)
+		assert.False(t, resp.IsError)
+		assert.Equal(t, "build.log", storedName)
+
+		decoded := decodeAttachFileResponse(t, resp)
+		assert.Equal(t, `C:\Users\coder\build.log`, decoded.Path)
+		assert.Equal(t, "build.log", decoded.Name)
+		assert.Equal(t, len(content), decoded.Size)
 	})
 
 	t.Run("CustomNameOverridePreservesJSONSubtype", func(t *testing.T) {
