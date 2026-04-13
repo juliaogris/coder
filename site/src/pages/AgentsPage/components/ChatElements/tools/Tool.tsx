@@ -666,6 +666,8 @@ const ComputerRenderer: FC<ToolRendererProps> = ({
 	let imageData = "";
 	let mimeType = "image/png";
 	let text = "";
+	let attachmentFileId = "";
+	let attachmentName = "";
 
 	if (Array.isArray(result)) {
 		for (const block of result) {
@@ -689,6 +691,17 @@ const ComputerRenderer: FC<ToolRendererProps> = ({
 			imageData = asString(rec.data);
 			mimeType = asString(rec.mime_type) || "image/png";
 			text = asString(rec.text);
+			attachmentFileId = asString(rec.attachment_file_id);
+			attachmentName = asString(rec.attachment_name);
+		}
+	}
+
+	if (attachmentFileId) {
+		imageData = "";
+		if (!text) {
+			text = attachmentName
+				? `Attached ${attachmentName}`
+				: "Attached screenshot.";
 		}
 	}
 

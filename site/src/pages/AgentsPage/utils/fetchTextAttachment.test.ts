@@ -1,5 +1,6 @@
 import {
 	decodeInlineTextAttachment,
+	fetchTextAttachmentContent,
 	formatTextAttachmentPreview,
 } from "./fetchTextAttachment";
 
@@ -50,5 +51,35 @@ describe("decodeInlineTextAttachment", () => {
 
 		expect(decodeInlineTextAttachment(raw)).toBe(raw);
 		expect(warn).toHaveBeenCalled();
+	});
+});
+
+describe("fetchTextAttachmentContent", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("returns the response body when the fetch succeeds", async () => {
+		vi.spyOn(globalThis, "fetch").mockResolvedValue(
+			new Response("hello from the server", { status: 200 }),
+		);
+
+		await expect(fetchTextAttachmentContent("file-1")).resolves.toBe(
+			"hello from the server",
+		);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"/api/experimental/chats/files/file-1",
+			expect.objectContaining({ signal: undefined }),
+		);
+	});
+
+	it("includes the HTTP status in fetch errors", async () => {
+		vi.spyOn(globalThis, "fetch").mockResolvedValue(
+			new Response("nope", { status: 503 }),
+		);
+
+		await expect(fetchTextAttachmentContent("file-2")).rejects.toThrow(
+			"Failed to fetch file (503)",
+		);
 	});
 });

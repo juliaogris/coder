@@ -40,7 +40,7 @@ export async function fetchTextAttachmentContent(
 		signal,
 	});
 	if (!response.ok) {
-		throw new Error("Failed to fetch file");
+		throw new Error(`Failed to fetch file (${response.status})`);
 	}
 	return response.text();
 }

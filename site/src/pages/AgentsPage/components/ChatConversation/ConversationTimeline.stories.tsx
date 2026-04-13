@@ -8,6 +8,11 @@ import { parseMessagesWithMergedTools } from "./messageParsing";
 const TEST_PNG_B64 =
 	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4n539HwAHFwLVF8kc1wAAAABJRU5ErkJggg==";
 
+const encodeUtf8Base64 = (value: string) => {
+	const bytes = new TextEncoder().encode(value);
+	return btoa(String.fromCharCode(...bytes));
+};
+
 const buildMessages = (messages: TypesGen.ChatMessage[]) =>
 	parseMessagesWithMergedTools(messages);
 
@@ -58,27 +63,52 @@ const askUserQuestionSubmittedResponse = [
 	"2. Release Plan: Small beta",
 ].join("\n");
 
-const TEXT_ATTACHMENT_RESPONSES = new Map<string, string>([
+type TextAttachmentResponse = {
+	body: string;
+	status: number;
+};
+
+const TEXT_ATTACHMENT_RESPONSES = new Map<string, TextAttachmentResponse>([
 	[
 		"storybook-test-text",
-		"Quarterly revenue increased 18% year over year after the new pricing rollout stabilized customer expansion.",
+		{
+			body: "Quarterly revenue increased 18% year over year after the new pricing rollout stabilized customer expansion.",
+			status: 200,
+		},
+	],
+	[
+		"storybook-json-text",
+		{ body: '{"status":"ok","items":[1,2,3]}', status: 200 },
 	],
 	[
 		"storybook-text-only",
-		"Runbook note: restart the worker after updating the queue configuration to pick up the new concurrency limits.",
+		{
+			body: "Runbook note: restart the worker after updating the queue configuration to pick up the new concurrency limits.",
+			status: 200,
+		},
 	],
 	[
 		"storybook-text-1",
-		"First context file: deployment checklist and rollback instructions for the release candidate.",
+		{
+			body: "First context file: deployment checklist and rollback instructions for the release candidate.",
+			status: 200,
+		},
 	],
 	[
 		"storybook-text-2",
-		"Second context file: service logs showing a transient timeout while the cache warmed up.",
+		{
+			body: "Second context file: service logs showing a transient timeout while the cache warmed up.",
+			status: 200,
+		},
 	],
 	[
 		"storybook-text-3",
-		"Third context file: local development configuration overrides for reproducing the issue.",
+		{
+			body: "Third context file: local development configuration overrides for reproducing the issue.",
+			status: 200,
+		},
 	],
+	["storybook-text-error", { body: "Temporary failure", status: 503 }],
 ]);
 
 const mockTextAttachmentFetch = () => {
@@ -91,9 +121,9 @@ const mockTextAttachmentFetch = () => {
 					? input.toString()
 					: input.url;
 
-		for (const [fileId, content] of TEXT_ATTACHMENT_RESPONSES) {
+		for (const [fileId, response] of TEXT_ATTACHMENT_RESPONSES) {
 			if (url.endsWith(fileId)) {
-				return new Response(content, { status: 200 });
+				return new Response(response.body, { status: response.status });
 			}
 		}
 
@@ -335,6 +365,74 @@ export const UserMessageWithTextAttachmentOnly: Story = {
 	},
 };
 
+export const UserMessageWithInlineTextAttachment: Story = {
+	args: {
+		...defaultArgs,
+		parsedMessages: parseMessagesWithMergedTools([
+			{
+				...baseMessage,
+				id: 1,
+				role: "user",
+				content: [
+					{ type: "text", text: "Here is inline context:" },
+					{
+						type: "file",
+						media_type: "text/plain",
+						data: encodeUtf8Base64(
+							"Inline deployment note: verify the feature flag before rollout.",
+						),
+					},
+				],
+			},
+		]),
+	},
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		const textButton = await canvas.findByRole("button", {
+			name: "View text attachment",
+		});
+		expect(textButton).toHaveTextContent(/Pasted text/i);
+		await userEvent.click(textButton);
+		expect(
+			await canvas.findByText(/Inline deployment note/i),
+		).toBeInTheDocument();
+	},
+};
+
+export const TextAttachmentFetchFailureShowsRetryMessage: Story = {
+	args: {
+		...defaultArgs,
+		parsedMessages: parseMessagesWithMergedTools([
+			{
+				...baseMessage,
+				id: 1,
+				role: "assistant",
+				content: [
+					{ type: "text", text: "The preview fetch will fail." },
+					{
+						type: "file",
+						file_id: "storybook-text-error",
+						media_type: "text/plain",
+						name: "preview.txt",
+					},
+				],
+			},
+		]),
+	},
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		const textButton = await canvas.findByRole("button", {
+			name: "View text attachment",
+		});
+		await userEvent.click(textButton);
+		expect(
+			await canvas.findByText(
+				/Couldn't load preview\. Select again to retry\./i,
+			),
+		).toBeInTheDocument();
+	},
+};
+
 /** Visual regression: text and image attachments render at the same height. */
 export const UserMessageWithMixedAttachments: Story = {
 	args: {
@@ -412,7 +510,8 @@ export const AssistantMessageWithImage: Story = {
 					{
 						type: "file",
 						media_type: "image/png",
-						data: TEST_PNG_B64,
+						file_id: "storybook-assistant-image",
+						name: "generated-image.png",
 					},
 				],
 			},
@@ -422,6 +521,130 @@ export const AssistantMessageWithImage: Story = {
 		const canvas = within(canvasElement);
 		const images = canvas.getAllByRole("img", { name: "Attached image" });
 		expect(images).toHaveLength(1);
+		expect(images[0]).toHaveAttribute(
+			"src",
+			"/api/experimental/chats/files/storybook-assistant-image",
+		);
+		expect(
+			canvas.queryByRole("link", { name: "Download generated-image.png" }),
+		).not.toBeInTheDocument();
+		await userEvent.tab();
+		expect(
+			canvas.getByRole("button", { name: "View generated-image.png" }),
+		).toHaveFocus();
+		expect(
+			canvas.getByRole("link", { name: "Download generated-image.png" }),
+		).toBeVisible();
+	},
+};
+
+export const AssistantMessageWithJSONAttachment: Story = {
+	args: {
+		...defaultArgs,
+		parsedMessages: buildMessages([
+			{
+				...baseMessage,
+				id: 1,
+				role: "assistant",
+				content: [
+					{ type: "text", text: "I attached the structured report." },
+					{
+						type: "file",
+						file_id: "storybook-json-text",
+						media_type: "application/json",
+						name: "report.json",
+					},
+				],
+			},
+		]),
+	},
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		const textButton = await canvas.findByRole("button", {
+			name: "View text attachment",
+		});
+		expect(textButton).toHaveTextContent(/report.json/i);
+		expect(
+			canvas.queryByRole("link", { name: "Download report.json" }),
+		).not.toBeInTheDocument();
+		textButton.focus();
+		expect(
+			canvas.getByRole("link", { name: "Download report.json" }),
+		).toHaveAttribute(
+			"href",
+			"/api/experimental/chats/files/storybook-json-text",
+		);
+		await userEvent.click(textButton);
+		expect(await canvas.findByText(/"status":"ok"/i)).toBeInTheDocument();
+	},
+};
+
+export const AssistantMessageWithDownloadableFile: Story = {
+	args: {
+		...defaultArgs,
+		parsedMessages: buildMessages([
+			{
+				...baseMessage,
+				id: 1,
+				role: "user",
+				content: [{ type: "text", text: "Share the deployment report" }],
+			},
+			{
+				...baseMessage,
+				id: 2,
+				role: "assistant",
+				content: [
+					{ type: "text", text: "I attached the report." },
+					{
+						type: "file",
+						media_type: "application/pdf",
+						file_id: "storybook-deployment-report",
+						name: "deployment-report.pdf",
+					},
+				],
+			},
+		]),
+	},
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		const downloadLink = canvas.getByRole("link", {
+			name: "Download deployment-report.pdf",
+		});
+		expect(downloadLink).toBeInTheDocument();
+		expect(downloadLink).toHaveAttribute(
+			"href",
+			"/api/experimental/chats/files/storybook-deployment-report",
+		);
+		expect(canvas.getByText("deployment-report.pdf")).toBeInTheDocument();
+	},
+};
+
+export const AssistantMessageWithUnnamedDownloadableFile: Story = {
+	args: {
+		...defaultArgs,
+		parsedMessages: buildMessages([
+			{
+				...baseMessage,
+				id: 1,
+				role: "assistant",
+				content: [
+					{ type: "text", text: "I attached the file without a custom name." },
+					{
+						type: "file",
+						media_type: "application/pdf",
+						file_id: "storybook-unnamed-report",
+					},
+				],
+			},
+		]),
+	},
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		const downloadLink = canvas.getByRole("link", {
+			name: "Download Attached file",
+		});
+		expect(downloadLink).toBeInTheDocument();
+		expect(canvas.getByText("Attached file")).toBeInTheDocument();
 	},
 };
 

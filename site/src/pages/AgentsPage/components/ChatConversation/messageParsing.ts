@@ -240,7 +240,9 @@ const isEditableUserMessageFileBlock = (
 	block: RenderBlock,
 ): block is TypesGen.ChatFilePart =>
 	block.type === "file" &&
-	(block.media_type.startsWith("image/") || block.media_type === "text/plain");
+	(block.media_type.startsWith("image/") ||
+		block.media_type.startsWith("text/") ||
+		block.media_type === "application/json");
 
 export const getEditableUserMessagePayload = (
 	message: TypesGen.ChatMessage,

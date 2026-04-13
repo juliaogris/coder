@@ -271,6 +271,7 @@ export const SubagentTool: React.FC<{
 					/>
 				</div>
 			)}
+
 			{expanded && hasPrompt && (
 				<ScrollArea
 					className="mt-1.5 rounded-md border border-solid border-border-default"

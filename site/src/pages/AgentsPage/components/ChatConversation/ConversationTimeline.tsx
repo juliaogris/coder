@@ -1,8 +1,10 @@
-import { PencilIcon } from "lucide-react";
+import { DownloadIcon, FileIcon, FileTextIcon, PencilIcon } from "lucide-react";
 import {
 	type FC,
 	Fragment,
 	memo,
+	type ReactNode,
+	useEffect,
 	useLayoutEffect,
 	useRef,
 	useState,
@@ -11,12 +13,19 @@ import type { UrlTransform } from "streamdown";
 import type * as TypesGen from "#/api/typesGenerated";
 import { Button } from "#/components/Button/Button";
 import { CopyButton } from "#/components/CopyButton/CopyButton";
+import { Spinner } from "#/components/Spinner/Spinner";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipTrigger,
 } from "#/components/Tooltip/Tooltip";
 import { cn } from "#/utils/cn";
+import {
+	decodeInlineTextAttachment,
+	fetchTextAttachmentContent,
+	formatTextAttachmentPreview,
+} from "../../utils/fetchTextAttachment";
+import { ImageThumbnail } from "../AgentChatInput";
 import {
 	ConversationItem,
 	Message,
@@ -37,7 +46,7 @@ import type {
 	ParsedMessageEntry,
 	RenderBlock,
 } from "./types";
-import { FileBlock, UserMessageContent } from "./UserMessageContent";
+import { UserMessageContent } from "./UserMessageContent";
 
 const getChatMessageTextContent = (
 	content: readonly TypesGen.ChatMessagePart[] | undefined,
@@ -117,6 +126,341 @@ const SmoothedResponse = memo<{
 	);
 });
 
+type PreviewTextAttachment = {
+	content: string;
+	fileName?: string;
+};
+
+const ATTACHMENT_EXTENSION_BY_MEDIA_TYPE: Record<string, string> = {
+	"application/json": "JSON",
+	"application/octet-stream": "FILE",
+	"application/pdf": "PDF",
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation":
+		"PPTX",
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "XLSX",
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+		"DOCX",
+	"application/x-tar": "TAR",
+	"application/zip": "ZIP",
+	"text/csv": "CSV",
+	"text/markdown": "MD",
+	"text/plain": "TXT",
+};
+
+const isTextAttachmentMediaType = (mediaType: string): boolean => {
+	return mediaType.startsWith("text/") || mediaType === "application/json";
+};
+
+const getAttachmentHref = (block: FileRenderBlock): string | null => {
+	if (block.file_id) {
+		return `/api/experimental/chats/files/${block.file_id}`;
+	}
+	if (block.data) {
+		return `data:${block.media_type};base64,${block.data}`;
+	}
+	return null;
+};
+
+const getAttachmentName = (block: FileRenderBlock): string => {
+	const name = block.name?.trim();
+	if (name) {
+		return name;
+	}
+	if (isTextAttachmentMediaType(block.media_type)) {
+		return "Pasted text";
+	}
+	return "Attached file";
+};
+
+const getAttachmentExtension = (block: FileRenderBlock): string => {
+	const name = getAttachmentName(block);
+	const lastDot = name.lastIndexOf(".");
+	if (lastDot > 0 && lastDot < name.length - 1) {
+		return name
+			.slice(lastDot + 1)
+			.replace(/[^a-z0-9]/gi, "")
+			.slice(0, 4)
+			.toUpperCase();
+	}
+	const mappedExtension = ATTACHMENT_EXTENSION_BY_MEDIA_TYPE[block.media_type];
+	if (mappedExtension) {
+		return mappedExtension;
+	}
+	const subtype = block.media_type.split("/")[1] ?? "";
+	if (subtype.endsWith("+json")) {
+		return "JSON";
+	}
+	return subtype
+		.replace(/[^a-z0-9]/gi, "")
+		.slice(0, 4)
+		.toUpperCase();
+};
+
+const DownloadOverlay: FC<{
+	href: string;
+	fileName: string;
+}> = ({ href, fileName }) => (
+	<a
+		href={href}
+		download={fileName}
+		onClick={(event) => event.stopPropagation()}
+		aria-label={`Download ${fileName}`}
+		className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded bg-surface-primary/80 text-content-secondary shadow-sm backdrop-blur-sm transition-opacity hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-content-link"
+	>
+		<DownloadIcon className="h-3.5 w-3.5" />
+	</a>
+);
+
+const AttachmentPreviewFrame: FC<{
+	href: string | null;
+	fileName: string;
+	children: ReactNode;
+}> = ({ href, fileName, children }) => {
+	const [showDownload, setShowDownload] = useState(false);
+
+	return (
+		<div
+			className="relative inline-flex flex-col items-start"
+			onMouseEnter={() => setShowDownload(true)}
+			onMouseLeave={() => setShowDownload(false)}
+			onFocusCapture={() => setShowDownload(true)}
+			onBlurCapture={(event) => {
+				if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+					setShowDownload(false);
+				}
+			}}
+		>
+			{children}
+			{href && showDownload ? (
+				<DownloadOverlay href={href} fileName={fileName} />
+			) : null}
+		</div>
+	);
+};
+
+const InlineTextAttachmentButton: FC<{
+	content: string;
+	fileName?: string;
+	onPreview?: (attachment: PreviewTextAttachment) => void | Promise<void>;
+	isPlaceholder?: boolean;
+	icon?: ReactNode;
+}> = ({ content, fileName, onPreview, isPlaceholder, icon }) => {
+	return (
+		<button
+			type="button"
+			aria-label="View text attachment"
+			className="inline-flex h-16 max-w-sm items-center gap-2 rounded-md border-0 bg-surface-tertiary px-3 py-2 text-left transition-colors hover:bg-surface-quaternary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-content-link"
+			onClick={(e) => {
+				e.stopPropagation();
+				onPreview?.({ content, fileName });
+			}}
+		>
+			{icon ?? (
+				<FileTextIcon className="size-icon-sm shrink-0 text-content-secondary" />
+			)}
+			<span
+				className={cn(
+					"line-clamp-2 min-w-0 text-content-secondary",
+					isPlaceholder ? "text-sm" : "font-mono text-xs",
+				)}
+			>
+				{isPlaceholder ? content : formatTextAttachmentPreview(content)}
+			</span>
+		</button>
+	);
+};
+
+const TextAttachmentButton: FC<{
+	fileId: string;
+	fileName?: string;
+	onPreview?: (attachment: PreviewTextAttachment) => void;
+}> = ({ fileId, fileName, onPreview }) => {
+	const [content, setContent] = useState<string | null>(null);
+	const [isLoading, setIsLoading] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const controllerRef = useRef<AbortController | null>(null);
+
+	useEffect(() => {
+		return () => controllerRef.current?.abort();
+	}, []);
+
+	return (
+		<div className="flex flex-col items-start gap-1">
+			<InlineTextAttachmentButton
+				content={content ?? fileName ?? "Pasted text"}
+				fileName={fileName}
+				icon={
+					isLoading ? (
+						<Spinner
+							size="sm"
+							loading
+							className="shrink-0 text-content-secondary"
+						/>
+					) : undefined
+				}
+				isPlaceholder={content === null}
+				onPreview={async () => {
+					if (isLoading) {
+						return;
+					}
+					if (content !== null) {
+						setError(null);
+						onPreview?.({ content, fileName });
+						return;
+					}
+
+					controllerRef.current?.abort();
+					const controller = new AbortController();
+					controllerRef.current = controller;
+					setError(null);
+					setIsLoading(true);
+
+					let fetchedContent: string;
+					try {
+						fetchedContent = await fetchTextAttachmentContent(
+							fileId,
+							controller.signal,
+						);
+					} catch (err) {
+						if (controllerRef.current === controller) {
+							controllerRef.current = null;
+						}
+						setIsLoading(false);
+						if (err instanceof Error && err.name === "AbortError") {
+							return;
+						}
+						console.error("Failed to load text attachment:", err);
+						setError("Couldn't load preview. Select again to retry.");
+						return;
+					}
+
+					if (controllerRef.current === controller) {
+						controllerRef.current = null;
+					}
+					setIsLoading(false);
+					setContent(fetchedContent);
+					onPreview?.({ content: fetchedContent, fileName });
+				}}
+			/>
+			{isLoading ? (
+				<span
+					role="status"
+					aria-live="polite"
+					className="text-xs text-content-secondary"
+				>
+					Loading attachment preview…
+				</span>
+			) : error ? (
+				<span role="alert" className="text-xs text-content-secondary">
+					{error}
+				</span>
+			) : null}
+		</div>
+	);
+};
+
+type FileRenderBlock = Extract<RenderBlock, { type: "file" }>;
+
+const FileCard: FC<{
+	block: FileRenderBlock;
+	href: string;
+}> = ({ block, href }) => {
+	const displayName = getAttachmentName(block);
+	const extension = getAttachmentExtension(block);
+	const extensionBadge = extension ? (
+		<span className="text-[10px] font-semibold tracking-wide text-content-secondary">
+			{extension}
+		</span>
+	) : (
+		<FileIcon className="h-4 w-4 text-content-secondary" />
+	);
+
+	return (
+		<a
+			href={href}
+			download={displayName}
+			onClick={(event) => event.stopPropagation()}
+			aria-label={`Download ${displayName}`}
+			className="inline-flex h-16 max-w-sm items-center gap-3 rounded-md border border-solid border-border-default bg-surface-tertiary px-3 py-2 no-underline transition-colors hover:bg-surface-quaternary"
+		>
+			<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-surface-secondary">
+				{extensionBadge}
+			</div>
+			<div className="min-w-0 flex-1">
+				<div className="truncate text-sm text-content-primary">
+					{displayName}
+				</div>
+				<div className="text-xs text-content-secondary">Download file</div>
+			</div>
+			<DownloadIcon className="h-4 w-4 shrink-0 text-content-secondary" />
+		</a>
+	);
+};
+
+const FileBlock: FC<{
+	block: FileRenderBlock;
+	onImageClick?: (src: string) => void;
+	onTextFileClick?: (attachment: PreviewTextAttachment) => void;
+}> = ({ block, onImageClick, onTextFileClick }) => {
+	const href = getAttachmentHref(block);
+	const displayName = getAttachmentName(block);
+
+	if (isTextAttachmentMediaType(block.media_type)) {
+		const textButton = block.file_id ? (
+			<TextAttachmentButton
+				fileId={block.file_id}
+				fileName={displayName}
+				onPreview={onTextFileClick}
+			/>
+		) : block.data != null ? (
+			<InlineTextAttachmentButton
+				content={decodeInlineTextAttachment(block.data)}
+				fileName={displayName}
+				onPreview={onTextFileClick}
+			/>
+		) : null;
+		if (!textButton) {
+			return null;
+		}
+		return (
+			<AttachmentPreviewFrame href={href} fileName={displayName}>
+				{textButton}
+			</AttachmentPreviewFrame>
+		);
+	}
+
+	if (block.media_type.startsWith("image/")) {
+		if (!href) {
+			return null;
+		}
+		return (
+			<AttachmentPreviewFrame href={href} fileName={displayName}>
+				<button
+					type="button"
+					aria-label={`View ${displayName}`}
+					className="inline-block rounded-md border-0 bg-transparent p-0"
+					onClick={(e) => {
+						e.stopPropagation();
+						onImageClick?.(href);
+					}}
+				>
+					<ImageThumbnail
+						previewUrl={href}
+						name="Attached image"
+						className="cursor-pointer transition-opacity hover:opacity-80"
+					/>
+				</button>
+			</AttachmentPreviewFrame>
+		);
+	}
+
+	if (!href) {
+		return null;
+	}
+
+	return <FileCard block={block} href={href} />;
+};
+
 // Shared block renderer used by both ChatMessageItem (historical
 // messages) and StreamingOutput (live stream). Encapsulates the
 // response / thinking / tool / file / sources switch so both
@@ -133,7 +477,7 @@ export const BlockList: FC<{
 	subagentStatusOverrides?: Map<string, TypesGen.ChatStatus>;
 	mcpServers?: readonly TypesGen.MCPServerConfig[];
 	onImageClick?: (src: string) => void;
-	onTextFileClick?: (content: string) => void;
+	onTextFileClick?: (attachment: PreviewTextAttachment) => void;
 	onImplementPlan?: () => Promise<void> | void;
 	onSendAskUserQuestionResponse?: (message: string) => Promise<void> | void;
 	isChatCompleted?: boolean;
@@ -385,7 +729,8 @@ const ChatMessageItem = memo<{
 	}) => {
 		const isUser = message.role === "user";
 		const [previewImage, setPreviewImage] = useState<string | null>(null);
-		const [previewText, setPreviewText] = useState<string | null>(null);
+		const [previewText, setPreviewText] =
+			useState<PreviewTextAttachment | null>(null);
 		const displayState = deriveMessageDisplayState({
 			message,
 			parsed,
@@ -418,7 +763,7 @@ const ChatMessageItem = memo<{
 							isEditing={editingMessageId === message.id}
 							fadeFromBottom={fadeFromBottom}
 							onImageClick={setPreviewImage}
-							onTextFileClick={setPreviewText}
+							onTextFileClick={(content) => setPreviewText({ content })}
 						/>
 					) : (
 						<Message className="w-full">
@@ -508,7 +853,8 @@ const ChatMessageItem = memo<{
 				)}
 				{previewText !== null && (
 					<TextPreviewDialog
-						content={previewText}
+						content={previewText.content}
+						fileName={previewText.fileName}
 						onClose={() => setPreviewText(null)}
 					/>
 				)}
