@@ -39,6 +39,50 @@ func TestAllowedStoredMediaTypes(t *testing.T) {
 	}, chatfiles.AllowedStoredMediaTypes())
 }
 
+func TestPromptReadableKind(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		mediaType string
+		want      string
+	}{
+		{
+			name:      "Text",
+			mediaType: "text/plain; charset=utf-8",
+			want:      chatfiles.PromptReadableKindText,
+		},
+		{
+			name:      "JSON",
+			mediaType: "application/json",
+			want:      chatfiles.PromptReadableKindText,
+		},
+		{
+			name:      "Image",
+			mediaType: "image/png",
+			want:      chatfiles.PromptReadableKindImage,
+		},
+		{
+			name:      "Document",
+			mediaType: "application/pdf",
+			want:      chatfiles.PromptReadableKindDocument,
+		},
+		{
+			name:      "Unsupported",
+			mediaType: "text/html",
+			want:      chatfiles.PromptReadableKindUnsupported,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, chatfiles.PromptReadableKind(tt.mediaType))
+		})
+	}
+}
+
 func TestClassifyStoredMediaType(t *testing.T) {
 	t.Parallel()
 
