@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"mime"
 	"regexp"
 	"strings"
 
@@ -14,26 +15,17 @@ import (
 	"golang.org/x/xerrors"
 
 	"cdr.dev/slog/v3"
-	"github.com/coder/coder/v2/coderd/chatfiles"
 	"github.com/coder/coder/v2/coderd/database"
-	"github.com/coder/coder/v2/coderd/x/chatd/chattool"
 	"github.com/coder/coder/v2/codersdk"
 )
 
-const promptTextFileInlineBudget = 128 * 1024
-
-const textFileInlinePrefix = "[text-file] The user attached a text-like file. The content is inlined below for direct model consumption.\n\n"
+const syntheticPasteInlineBudget = 128 * 1024
 
 const syntheticPasteInlinePrefix = "[pasted-text] The user pasted text into the chat UI. The frontend collapsed it into an attachment, so the content is inlined below for direct model consumption.\n\n"
 
-var textFileTruncationWarning = fmt.Sprintf(
-	"\n\n[text-file] The attachment was truncated to %d bytes before sending to the model.",
-	promptTextFileInlineBudget,
-)
-
 var syntheticPasteTruncationWarning = fmt.Sprintf(
 	"\n\n[pasted-text] The pasted text was truncated to %d bytes before sending to the model.",
-	promptTextFileInlineBudget,
+	syntheticPasteInlineBudget,
 )
 
 var toolCallIDSanitizer = regexp.MustCompile(`[^a-zA-Z0-9_-]`)
@@ -812,16 +804,11 @@ func toolResultContentToPart(content fantasy.ToolResultContent) codersdk.ChatMes
 		}
 	case fantasy.ToolResultOutputContentMedia:
 		isMedia = true
-		mediaResult := persistedMediaResult{
+		result, _ = json.Marshal(persistedMediaResult{
 			Data:     output.Data,
 			MimeType: output.MediaType,
 			Text:     output.Text,
-		}
-		if attachments := chattool.AttachmentsFromMetadataLax(content.ClientMetadata); len(attachments) > 0 {
-			mediaResult.AttachmentFileID = attachments[0].FileID.String()
-			mediaResult.AttachmentName = attachments[0].Name
-		}
-		result, _ = json.Marshal(mediaResult)
+		})
 	default:
 		result = []byte(`{}`)
 	}
@@ -1143,49 +1130,39 @@ func safeToolCallArgs(input string) json.RawMessage {
 	return raw
 }
 
-// TODO: Replace filename-based synthetic-paste detection with explicit origin metadata.
-func hasSyntheticPasteName(name string) bool {
-	return syntheticPasteFileNamePattern.MatchString(name)
+// TODO: Replace filename-based detection with explicit origin metadata.
+func isSyntheticPaste(name string, mediaType string) bool {
+	if !syntheticPasteFileNamePattern.MatchString(name) {
+		return false
+	}
+	parsedMediaType, _, err := mime.ParseMediaType(mediaType)
+	if err == nil {
+		mediaType = parsedMediaType
+	}
+	if strings.HasPrefix(mediaType, "text/") {
+		return true
+	}
+	switch mediaType {
+	case "application/json", "application/xml", "application/javascript", "application/x-yaml":
+		return true
+	default:
+		return false
+	}
 }
 
-func formatPromptTextFile(name, mediaType string, body []byte) string {
-	const attachmentNameLabel = "Attachment name: "
-	const attachmentMediaTypeLabel = "Attachment media type: "
+func formatSyntheticPasteText(name string, body []byte) string {
 	const syntheticPasteNameLabel = "Synthetic attachment name: "
-	const metadataSuffix = "\n\n"
-
-	prefix := textFileInlinePrefix
-	nameLabel := attachmentNameLabel
-	truncationWarning := textFileTruncationWarning
-	includeMediaType := mediaType != ""
-	if hasSyntheticPasteName(name) {
-		prefix = syntheticPasteInlinePrefix
-		nameLabel = syntheticPasteNameLabel
-		truncationWarning = syntheticPasteTruncationWarning
-		includeMediaType = false
-	}
-
-	bodyLen := min(len(body), promptTextFileInlineBudget)
-	grow := len(prefix) + bodyLen + len(truncationWarning)
-	if name != "" {
-		grow += len(nameLabel) + len(name) + len(metadataSuffix)
-	}
-	if includeMediaType {
-		grow += len(attachmentMediaTypeLabel) + len(mediaType) + len(metadataSuffix)
-	}
+	const syntheticPasteNameSuffix = "\n\n"
 
 	var sb strings.Builder
-	sb.Grow(grow)
-	_, _ = sb.WriteString(prefix)
+	sb.Grow(len(syntheticPasteInlinePrefix) + len(name) + min(len(body), syntheticPasteInlineBudget) + len(syntheticPasteTruncationWarning) + len(syntheticPasteNameLabel) + len(syntheticPasteNameSuffix))
+	_, _ = sb.WriteString(syntheticPasteInlinePrefix)
 	if name != "" {
-		_, _ = fmt.Fprintf(&sb, "%s%s%s", nameLabel, name, metadataSuffix)
+		_, _ = fmt.Fprintf(&sb, "%s%s%s", syntheticPasteNameLabel, name, syntheticPasteNameSuffix)
 	}
-	if includeMediaType {
-		_, _ = fmt.Fprintf(&sb, "%s%s%s", attachmentMediaTypeLabel, mediaType, metadataSuffix)
-	}
-	_, _ = sb.WriteString(string(body[:bodyLen]))
-	if len(body) > promptTextFileInlineBudget {
-		_, _ = sb.WriteString(truncationWarning)
+	_, _ = sb.WriteString(string(body[:min(len(body), syntheticPasteInlineBudget)]))
+	if len(body) > syntheticPasteInlineBudget {
+		_, _ = sb.WriteString(syntheticPasteTruncationWarning)
 	}
 	return sb.String()
 }
@@ -1291,17 +1268,15 @@ func toolResultPartToMessagePart(logger slog.Logger, part codersdk.ChatMessagePa
 // struct tag (json:"media_type"). Do not change it without
 // updating both paths.
 type persistedMediaResult struct {
-	Data             string `json:"data"`
-	MimeType         string `json:"mime_type"`
-	Text             string `json:"text"`
-	AttachmentFileID string `json:"attachment_file_id,omitempty"`
-	AttachmentName   string `json:"attachment_name,omitempty"`
+	Data     string `json:"data"`
+	MimeType string `json:"mime_type"`
+	Text     string `json:"text"`
 }
 
 // partsToMessageParts converts SDK chat message parts into fantasy
-// message parts for LLM dispatch. Callers may provide resolved user
-// file bytes; file parts without bytes are omitted. File-reference
-// parts still become text, and source parts are skipped.
+// message parts for LLM dispatch. It handles file data injection
+// from resolved files, file-reference to text conversion, and
+// source part skipping.
 func partsToMessageParts(
 	logger slog.Logger,
 	parts []codersdk.ChatMessagePart,
@@ -1345,13 +1320,11 @@ func partsToMessageParts(
 		case codersdk.ChatMessagePartTypeFile:
 			data := part.Data
 			mediaType := part.MediaType
-			name := part.Name
+			var name string
 			if part.FileID.Valid {
 				if fd, ok := resolved[part.FileID.UUID]; ok {
 					data = fd.Data
-					if fd.Name != "" {
-						name = fd.Name
-					}
+					name = fd.Name
 					if mediaType == "" {
 						mediaType = fd.MediaType
 					}
@@ -1364,23 +1337,22 @@ func partsToMessageParts(
 				// replayed into later model turns.
 				continue
 			}
-			providerOptions := providerMetadataToOptions(logger, part.ProviderMetadata)
-			// Route stored files through the repo-owned prompt-readable
-			// policy. Text-like files are inlined so every provider can
-			// read them, while images and documents stay as native file
-			// parts for provider-specific encoding.
-			if chatfiles.PromptReadableKind(mediaType) == chatfiles.PromptReadableKindText {
+			// Providers only accept a small set of MIME types in file
+			// content blocks, typically images and PDFs. A synthetic
+			// paste sent as a text/plain FilePart is dropped or rejected,
+			// so the model sees nothing. Converting it to TextPart keeps
+			// the pasted content visible to every provider.
+			if isSyntheticPaste(name, mediaType) {
 				result = append(result, fantasy.TextPart{
-					Text:            formatPromptTextFile(name, mediaType, data),
-					ProviderOptions: providerOptions,
+					Text:            formatSyntheticPasteText(name, data),
+					ProviderOptions: providerMetadataToOptions(logger, part.ProviderMetadata),
 				})
 				continue
 			}
 			result = append(result, fantasy.FilePart{
-				Filename:        name,
 				Data:            data,
 				MediaType:       mediaType,
-				ProviderOptions: providerOptions,
+				ProviderOptions: providerMetadataToOptions(logger, part.ProviderMetadata),
 			})
 		case codersdk.ChatMessagePartTypeFileReference:
 			// LLMs don't understand file-reference natively.

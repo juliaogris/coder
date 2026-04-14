@@ -12,68 +12,31 @@ import (
 	"github.com/gabriel-vasile/mimetype"
 )
 
-const (
-	PromptReadableKindUnsupported = "unsupported"
-	PromptReadableKindText        = "text"
-	PromptReadableKindImage       = "image"
-	PromptReadableKindDocument    = "document"
-)
-
-type mediaTypePolicy struct {
-	allowStorage       bool
-	inlineSafe         bool
-	promptReadableKind string
-}
-
 var (
 	utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
-	mediaTypePolicies = map[string]mediaTypePolicy{
-		"image/png": {
-			allowStorage:       true,
-			inlineSafe:         true,
-			promptReadableKind: PromptReadableKindImage,
-		},
-		"image/jpeg": {
-			allowStorage:       true,
-			inlineSafe:         true,
-			promptReadableKind: PromptReadableKindImage,
-		},
-		"image/gif": {
-			allowStorage:       true,
-			inlineSafe:         true,
-			promptReadableKind: PromptReadableKindImage,
-		},
-		"image/webp": {
-			allowStorage:       true,
-			inlineSafe:         true,
-			promptReadableKind: PromptReadableKindImage,
-		},
-		"text/plain": {
-			allowStorage:       true,
-			inlineSafe:         true,
-			promptReadableKind: PromptReadableKindText,
-		},
-		"text/markdown": {
-			allowStorage:       true,
-			inlineSafe:         true,
-			promptReadableKind: PromptReadableKindText,
-		},
-		"text/csv": {
-			allowStorage:       true,
-			inlineSafe:         true,
-			promptReadableKind: PromptReadableKindText,
-		},
-		"application/json": {
-			allowStorage:       true,
-			inlineSafe:         true,
-			promptReadableKind: PromptReadableKindText,
-		},
-		"application/pdf": {
-			allowStorage:       true,
-			inlineSafe:         true,
-			promptReadableKind: PromptReadableKindDocument,
-		},
+	allowedStoredMediaTypes = map[string]struct{}{
+		"image/png":        {},
+		"image/jpeg":       {},
+		"image/gif":        {},
+		"image/webp":       {},
+		"text/plain":       {},
+		"text/markdown":    {},
+		"text/csv":         {},
+		"application/json": {},
+		"application/pdf":  {},
+	}
+
+	inlineSafeMediaTypes = map[string]struct{}{
+		"image/png":        {},
+		"image/jpeg":       {},
+		"image/gif":        {},
+		"image/webp":       {},
+		"text/plain":       {},
+		"text/markdown":    {},
+		"text/csv":         {},
+		"application/json": {},
+		"application/pdf":  {},
 	}
 )
 
@@ -92,11 +55,8 @@ func BaseMediaType(mediaType string) string {
 
 // AllowedStoredMediaTypes returns the supported durable chat file media types.
 func AllowedStoredMediaTypes() []string {
-	types := make([]string, 0, len(mediaTypePolicies))
-	for mediaType, policy := range mediaTypePolicies {
-		if !policy.allowStorage {
-			continue
-		}
+	types := make([]string, 0, len(allowedStoredMediaTypes))
+	for mediaType := range allowedStoredMediaTypes {
 		types = append(types, mediaType)
 	}
 	slices.Sort(types)
@@ -112,35 +72,8 @@ func AllowedStoredMediaTypesString() string {
 // IsAllowedStoredMediaType reports whether the media type is supported for
 // durable chat file storage.
 func IsAllowedStoredMediaType(mediaType string) bool {
-	policy, ok := mediaTypePolicies[BaseMediaType(mediaType)]
-	return ok && policy.allowStorage
-}
-
-// PromptReadableKind reports how the stored media type should be surfaced to a
-// model prompt.
-func PromptReadableKind(mediaType string) string {
-	policy, ok := mediaTypePolicies[BaseMediaType(mediaType)]
-	if !ok {
-		return PromptReadableKindUnsupported
-	}
-	return policy.promptReadableKind
-}
-
-// IsCompatibleUploadMediaType reports whether an upload request that declared
-// declaredMediaType may be stored as storedMediaType after byte classification.
-// Exact matches are always compatible; the compatibility table only covers
-// explicit refinements like text/plain uploads that safely store as richer text
-// subtypes.
-func IsCompatibleUploadMediaType(declaredMediaType, storedMediaType string) bool {
-	declaredMediaType = BaseMediaType(declaredMediaType)
-	storedMediaType = BaseMediaType(storedMediaType)
-	if declaredMediaType == storedMediaType {
-		return true
-	}
-	if declaredMediaType != "text/plain" {
-		return false
-	}
-	return PromptReadableKind(storedMediaType) == PromptReadableKindText
+	_, ok := allowedStoredMediaTypes[BaseMediaType(mediaType)]
+	return ok
 }
 
 // HasSVGRootElement reports whether the provided file bytes decode to an SVG
@@ -207,6 +140,6 @@ func refineTextMediaType(name string, data []byte) string {
 // IsInlineSafe reports whether files of the given media type should be rendered
 // inline in the browser rather than downloaded as attachments.
 func IsInlineSafe(mediaType string) bool {
-	policy, ok := mediaTypePolicies[BaseMediaType(mediaType)]
-	return ok && policy.inlineSafe
+	_, ok := inlineSafeMediaTypes[BaseMediaType(mediaType)]
+	return ok
 }

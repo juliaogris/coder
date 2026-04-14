@@ -16,50 +16,6 @@ func TestDetectMediaType_WebP(t *testing.T) {
 	require.Equal(t, "image/webp", chatfiles.DetectMediaType(data))
 }
 
-func TestPromptReadableKind(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name      string
-		mediaType string
-		want      string
-	}{
-		{
-			name:      "Text",
-			mediaType: "text/plain; charset=utf-8",
-			want:      chatfiles.PromptReadableKindText,
-		},
-		{
-			name:      "JSON",
-			mediaType: "application/json",
-			want:      chatfiles.PromptReadableKindText,
-		},
-		{
-			name:      "Image",
-			mediaType: "image/png",
-			want:      chatfiles.PromptReadableKindImage,
-		},
-		{
-			name:      "Document",
-			mediaType: "application/pdf",
-			want:      chatfiles.PromptReadableKindDocument,
-		},
-		{
-			name:      "Unsupported",
-			mediaType: "text/html",
-			want:      chatfiles.PromptReadableKindUnsupported,
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tt.want, chatfiles.PromptReadableKind(tt.mediaType))
-		})
-	}
-}
-
 func TestClassifyStoredMediaType(t *testing.T) {
 	t.Parallel()
 
@@ -124,50 +80,6 @@ func TestClassifyStoredMediaType(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.want, chatfiles.ClassifyStoredMediaType(tt.fileName, tt.data))
-		})
-	}
-}
-
-func TestIsCompatibleUploadMediaType(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		declared string
-		stored   string
-		want     bool
-	}{
-		{
-			name:     "TextPlainMayRefineToJSON",
-			declared: "text/plain; charset=utf-8",
-			stored:   "application/json",
-			want:     true,
-		},
-		{
-			name:     "TextPlainMayRefineToCSV",
-			declared: "text/plain",
-			stored:   "text/csv",
-			want:     true,
-		},
-		{
-			name:     "TextPlainMayNotRefineToPNG",
-			declared: "text/plain",
-			stored:   "image/png",
-			want:     false,
-		},
-		{
-			name:     "JSONMustStillMatchExactly",
-			declared: "application/json",
-			stored:   "text/plain",
-			want:     false,
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tt.want, chatfiles.IsCompatibleUploadMediaType(tt.declared, tt.stored))
 		})
 	}
 }

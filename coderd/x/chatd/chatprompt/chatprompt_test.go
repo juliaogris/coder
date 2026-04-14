@@ -1860,7 +1860,7 @@ func TestConvertMessagesWithFiles_BinaryPasteNameStillStaysFilePart(t *testing.T
 	require.Equal(t, "image/png", filePart.MediaType)
 }
 
-func TestConvertMessagesWithFiles_TextFileBecomesTextPart(t *testing.T) {
+func TestConvertMessagesWithFiles_NonPasteTextFileStillStaysFilePart(t *testing.T) {
 	t.Parallel()
 
 	fileID := uuid.New()
@@ -1873,60 +1873,40 @@ func TestConvertMessagesWithFiles_TextFileBecomesTextPart(t *testing.T) {
 	require.Len(t, prompt, 1)
 	require.Len(t, prompt[0].Content, 1)
 
-	textPart, ok := fantasy.AsMessagePart[fantasy.TextPart](prompt[0].Content[0])
-	require.True(t, ok, "expected TextPart")
-
-	_, isFilePart := fantasy.AsMessagePart[fantasy.FilePart](prompt[0].Content[0])
-	require.False(t, isFilePart, "text-like uploads should be inlined for prompt readability")
-	require.Contains(t, textPart.Text, "The user attached a text-like file")
-	require.Contains(t, textPart.Text, "Attachment name: report.txt")
-	require.Contains(t, textPart.Text, "Attachment media type: text/plain")
-	require.Contains(t, textPart.Text, "plain text report")
-}
-
-func TestConvertMessagesWithFiles_JSONFileBecomesTextPart(t *testing.T) {
-	t.Parallel()
-
-	fileID := uuid.New()
-	prompt := convertSingleResolvedFileMessage(t, fileID, chatprompt.FileData{
-		Name:      "payload.json",
-		Data:      []byte(`{"ok":true}`),
-		MediaType: "application/json",
-	})
-
-	require.Len(t, prompt, 1)
-	require.Len(t, prompt[0].Content, 1)
-
-	textPart, ok := fantasy.AsMessagePart[fantasy.TextPart](prompt[0].Content[0])
-	require.True(t, ok, "expected TextPart")
-
-	_, isFilePart := fantasy.AsMessagePart[fantasy.FilePart](prompt[0].Content[0])
-	require.False(t, isFilePart, "JSON uploads should not remain FileParts")
-	require.Contains(t, textPart.Text, "Attachment name: payload.json")
-	require.Contains(t, textPart.Text, "Attachment media type: application/json")
-	require.Contains(t, textPart.Text, `{"ok":true}`)
-}
-
-func TestConvertMessagesWithFiles_PDFFileStillStaysFilePart(t *testing.T) {
-	t.Parallel()
-
-	fileID := uuid.New()
-	prompt := convertSingleResolvedFileMessage(t, fileID, chatprompt.FileData{
-		Name:      "report.pdf",
-		Data:      []byte("%PDF-1.7\n"),
-		MediaType: "application/pdf",
-	})
-
-	require.Len(t, prompt, 1)
-	require.Len(t, prompt[0].Content, 1)
-
 	filePart, ok := fantasy.AsMessagePart[fantasy.FilePart](prompt[0].Content[0])
 	require.True(t, ok, "expected FilePart")
 
 	_, isTextPart := fantasy.AsMessagePart[fantasy.TextPart](prompt[0].Content[0])
-	require.False(t, isTextPart, "PDF uploads should stay FileParts")
-	require.Equal(t, "application/pdf", filePart.MediaType)
-	require.Equal(t, "report.pdf", filePart.Filename)
+	require.False(t, isTextPart, "non-synthetic text files should stay FilePart attachments")
+	require.Equal(t, []byte("plain text report"), filePart.Data)
+}
+
+func TestConvertMessagesWithFiles_IsSyntheticPaste(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		fileName  string
+		mediaType string
+		want      bool
+	}{
+		{name: "plain text", fileName: "pasted-text-2025-01-01-12-00-00.txt", mediaType: "text/plain", want: true},
+		{name: "markdown", fileName: "pasted-text-2025-01-01-12-00-00.txt", mediaType: "text/markdown", want: true},
+		{name: "json", fileName: "pasted-text-2025-01-01-12-00-00.txt", mediaType: "application/json", want: true},
+		{name: "binary mime", fileName: "pasted-text-2025-01-01-12-00-00.txt", mediaType: "image/png", want: false},
+		{name: "non synthetic name", fileName: "report.txt", mediaType: "text/plain", want: false},
+		{name: "malformed timestamp", fileName: "pasted-text-2025-01-01.txt", mediaType: "text/plain", want: false},
+		{name: "wrong extension", fileName: "pasted-text-2025-01-01-12-00-00.md", mediaType: "text/plain", want: false},
+		{name: "empty name", fileName: "", mediaType: "text/plain", want: false},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, chatprompt.IsSyntheticPasteForTest(tt.fileName, tt.mediaType))
+		})
+	}
 }
 
 func TestConvertMessagesWithFiles_AssistantAttachmentIsNotReplayed(t *testing.T) {
