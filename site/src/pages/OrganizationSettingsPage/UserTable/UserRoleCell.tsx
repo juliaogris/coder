@@ -78,11 +78,9 @@ export const UserRoleCell: FC<UserRoleCellProps> = ({
 
 				<Pill
 					className={
-						hasOwnerRole
+						hasOwnerRole || mainDisplayRole.global
 							? "bg-surface-sky border-border-pending"
-							: mainDisplayRole.global
-								? "bg-surface-sky border-border-pending"
-								: "bg-surface-tertiary border-border"
+							: "bg-surface-secondary border-border"
 					}
 				>
 					{mainDisplayRole.global ? (
@@ -114,7 +112,7 @@ const OverflowRolePill: FC<OverflowRolePillProps> = ({ roles }) => {
 		<TooltipProvider>
 			<Tooltip delayDuration={0}>
 				<TooltipTrigger asChild>
-					<Pill className="bg-surface-secondary border-border">
+					<Pill className="bg-surface-secondary border-border border-solid">
 						+{roles.length} more
 					</Pill>
 				</TooltipTrigger>
@@ -126,7 +124,7 @@ const OverflowRolePill: FC<OverflowRolePillProps> = ({ roles }) => {
 							className={
 								role.global
 									? "bg-surface-sky border-border-pending"
-									: "bg-surface-tertiary border-border"
+									: "bg-surface-secondary border-border"
 							}
 						>
 							{role.global ? (

@@ -115,7 +115,7 @@ export const OptionConfig: FC<OptionConfigProps> = ({
 			className={cn(
 				"font-mono text-[13px] font-semibold bg-surface-secondary inline-flex items-center rounded p-1.5 leading-none gap-1.5 border border-solid border-border",
 				isSource &&
-					"border-border-pending [&_.OptionConfigFlag]:bg-content-link",
+					"border-border-pending [&_.OptionConfigFlag]:bg-content-link text-content-primary",
 				className,
 			)}
 		/>

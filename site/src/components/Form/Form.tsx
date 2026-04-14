@@ -20,19 +20,24 @@ type FormProps = HTMLProps<HTMLFormElement> & {
 	direction?: FormContextValue["direction"];
 };
 
-export const Form: FC<FormProps> = ({ direction, ...formProps }) => {
+export const Form: FC<FormProps> = ({
+	className,
+	children,
+	direction,
+	...formProps
+}) => {
 	return (
 		<FormContext.Provider value={{ direction }}>
 			<form
-				{...formProps}
 				className={cn(
 					"flex flex-col gap-16",
-					direction === "horizontal"
-						? "min-[900px]:gap-20"
-						: "min-[900px]:gap-10",
-					formProps.className,
+					direction === "horizontal" ? "lg:gap-20" : "lg:gap-10",
+					className,
 				)}
-			/>
+				{...formProps}
+			>
+				{children}
+			</form>
 		</FormContext.Provider>
 	);
 };
@@ -88,16 +93,15 @@ export const FormSection: FC<FormSectionProps> = ({
 		<section
 			ref={ref}
 			className={cn(
-				"flex items-start flex-col gap-4 min-[1200px]:gap-6",
-				direction === "horizontal" &&
-					"min-[1200px]:flex-row min-[1200px]:gap-[120px]",
+				"flex items-start flex-col gap-4 lg:gap-6",
+				direction === "horizontal" && "lg:flex-row lg:gap-[120px]",
 				classes.root,
 			)}
 		>
 			<div
 				className={cn(
 					"w-full shrink-0 top-6",
-					direction === "horizontal" && "max-w-[312px] min-[1200px]:sticky",
+					direction === "horizontal" && "max-w-[312px] lg:sticky",
 					classes.sectionInfo,
 				)}
 			>

@@ -119,7 +119,7 @@ type PillProps = React.ComponentPropsWithRef<"div"> & {
 export const Pill: React.FC<PillProps> = ({ icon, children, ...divProps }) => {
 	return (
 		<div
-			className="inline-flex items-center h-8 rounded-full border border-border text-xs font-medium p-2 gap-2 cursor-default"
+			className="inline-flex items-center h-8 rounded-full border-solid border border-border text-xs font-medium p-2 gap-2 cursor-default"
 			{...divProps}
 		>
 			{cloneElement(icon, { className: "size-[14px]" })}
@@ -170,10 +170,13 @@ export const BooleanPill: FC<BooleanPillProps> = ({
 
 type LogsProps = HTMLAttributes<HTMLDivElement> & { lines: readonly string[] };
 
-export const Logs: FC<LogsProps> = ({ lines, ...divProps }) => {
+export const Logs: FC<LogsProps> = ({ className, lines, ...divProps }) => {
 	return (
 		<div
-			className="font-mono text-[13px] leading-[160%] p-6 bg-surface-secondary overflow-x-auto whitespace-pre-wrap break-all"
+			className={cn(
+				"font-mono text-[13px] leading-[160%] p-6 bg-surface-secondary overflow-x-auto whitespace-pre-wrap break-all",
+				className,
+			)}
 			{...divProps}
 		>
 			{lines.map((line, index) => (

@@ -12,7 +12,6 @@
 import { useTheme } from "@emotion/react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Avatar as AvatarPrimitive } from "radix-ui";
-import type { CSSProperties } from "react";
 import { getExternalImageStylesFromUrl } from "#/theme/externalImages";
 import { cn } from "#/utils/cn";
 
@@ -69,9 +68,6 @@ export const Avatar: React.FC<AvatarProps> = ({
 	children,
 	...props
 }) => {
-	// Kept for runtime access to theme.externalImages, which provides
-	// dynamic CSS filter styles based on the current theme mode and URL
-	// parameters. No Tailwind token equivalent exists for this value.
 	const theme = useTheme();
 
 	return (
@@ -82,12 +78,7 @@ export const Avatar: React.FC<AvatarProps> = ({
 			<AvatarPrimitive.Image
 				src={src}
 				className="aspect-square size-full object-contain"
-				style={
-					getExternalImageStylesFromUrl(
-						theme.externalImages,
-						src,
-					) as CSSProperties
-				}
+				css={getExternalImageStylesFromUrl(theme.externalImages, src)}
 			/>
 			{fallback && (
 				<AvatarPrimitive.Fallback className="flex h-full w-full items-center justify-center rounded-full">

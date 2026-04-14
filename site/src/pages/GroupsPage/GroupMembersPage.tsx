@@ -218,7 +218,7 @@ const GroupMemberRow: FC<GroupMemberRowProps> = ({
 					member.status === "suspended" && "text-content-secondary",
 				)}
 			>
-				<div>{member.status}</div>{" "}
+				<div>{member.status}</div>
 				<LastSeen at={member.last_seen_at} className="text-xs" />
 			</TableCell>
 			<TableCell width="1%">

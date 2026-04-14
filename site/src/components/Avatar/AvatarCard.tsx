@@ -31,7 +31,7 @@ export const AvatarCard: FC<AvatarCardProps> = ({
 				<h3
 					// Lets users hover over truncated text to see whole thing
 					title={header}
-					className="text-[1rem] leading-[1.4] m-0 truncate"
+					className="text-[1rem] font-normal leading-[1.4] m-0 truncate"
 				>
 					{header}
 				</h3>

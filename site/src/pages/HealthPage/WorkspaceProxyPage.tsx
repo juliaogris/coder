@@ -66,7 +66,7 @@ const WorkspaceProxyPage: FC = () => {
 						<div
 							key={region.id}
 							className={cn(
-								"rounded-lg border text-sm",
+								"rounded-lg border border-solid text-sm",
 								region.healthy ? "border-border" : "border-border-warning",
 							)}
 						>
@@ -126,7 +126,7 @@ const WorkspaceProxyPage: FC = () => {
 								</div>
 							</header>
 
-							<div className="border-t border-border flex items-center justify-between py-2 px-6 text-xs text-content-secondary">
+							<div className="border-0 border-t border-border border-solid flex items-center justify-between py-2 px-6 text-xs text-content-secondary">
 								{region.status?.status === "unregistered" ? (
 									<span>Has not connected yet</span>
 								) : warnings.length === 0 && errors.length === 0 ? (
