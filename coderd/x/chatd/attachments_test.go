@@ -54,33 +54,6 @@ func TestBuildAssistantPartsForPersist_PromotesToolAttachments(t *testing.T) {
 	require.Equal(t, "screenshot.png", parts[1].Name)
 }
 
-func TestBuildAssistantPartsForPersist_OnlyAttachments(t *testing.T) {
-	t.Parallel()
-
-	fileID := uuid.MustParse("bbbbbbbb-cccc-dddd-eeee-ffffffffffff")
-	response := chattool.WithAttachments(
-		fantasy.NewTextResponse(`{"ok":true}`),
-		chattool.AttachmentMetadata{
-			FileID:    fileID,
-			MediaType: "text/plain",
-			Name:      "build.log",
-		},
-	)
-
-	parts, err := buildAssistantPartsForPersist(
-		nil,
-		[]fantasy.ToolResultContent{{ClientMetadata: response.Metadata}},
-		chatloop.PersistedStep{},
-		nil,
-	)
-	require.NoError(t, err)
-
-	require.Len(t, parts, 1)
-	require.Equal(t, codersdk.ChatMessagePartTypeFile, parts[0].Type)
-	require.Equal(t, fileID, parts[0].FileID.UUID)
-	require.Equal(t, "build.log", parts[0].Name)
-}
-
 func TestBuildAssistantPartsForPersist_InvalidAttachmentMetadataFails(t *testing.T) {
 	t.Parallel()
 

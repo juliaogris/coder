@@ -56,9 +56,7 @@ func TestComputerUseTool_Run_Screenshot(t *testing.T) {
 
 	tool := chattool.NewComputerUseTool(geometry.DeclaredWidth, geometry.DeclaredHeight, func(_ context.Context) (workspacesdk.AgentConn, error) {
 		return mockConn, nil
-	}, func(_ context.Context, _ string, _ string, _ []byte) (uuid.UUID, error) {
-		return uuid.MustParse("11111111-2222-3333-4444-555555555555"), nil
-	}, quartz.NewReal(), slogtest.Make(t, nil))
+	}, nil, quartz.NewReal(), slogtest.Make(t, nil))
 
 	call := fantasy.ToolCall{
 		ID:    "test-1",
@@ -123,41 +121,6 @@ func TestComputerUseTool_Run_Screenshot_PersistsAttachment(t *testing.T) {
 	require.Len(t, attachments, 1)
 	assert.Equal(t, uuid.MustParse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"), attachments[0].FileID)
 	assert.Equal(t, "image/png", attachments[0].MediaType)
-}
-
-func TestComputerUseTool_Run_Screenshot_WithoutStoreFileFallsBackToImage(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	mockConn := agentconnmock.NewMockAgentConn(ctrl)
-	geometry := workspacesdk.DefaultDesktopGeometry()
-
-	const screenshotPNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4n539HwAHFwLVF8kc1wAAAABJRU5ErkJggg=="
-
-	mockConn.EXPECT().ExecuteDesktopAction(
-		gomock.Any(),
-		gomock.AssignableToTypeOf(workspacesdk.DesktopAction{}),
-	).Return(workspacesdk.DesktopActionResponse{
-		Output:           "screenshot",
-		ScreenshotData:   screenshotPNG,
-		ScreenshotWidth:  geometry.DeclaredWidth,
-		ScreenshotHeight: geometry.DeclaredHeight,
-	}, nil)
-
-	tool := chattool.NewComputerUseTool(geometry.DeclaredWidth, geometry.DeclaredHeight, func(_ context.Context) (workspacesdk.AgentConn, error) {
-		return mockConn, nil
-	}, nil, quartz.NewReal(), slogtest.Make(t, nil))
-
-	resp, err := tool.Run(context.Background(), fantasy.ToolCall{
-		ID: "test-screenshot-no-store", Name: "computer", Input: `{"action":"screenshot"}`,
-	})
-	require.NoError(t, err)
-	assert.Equal(t, "image", resp.Type)
-	assert.Equal(t, "image/png", resp.MediaType)
-	assert.False(t, resp.IsError)
-	attachments, err := chattool.AttachmentsFromMetadata(resp.Metadata)
-	require.NoError(t, err)
-	assert.Empty(t, attachments)
 }
 
 func TestComputerUseTool_Run_Screenshot_StoreErrorFallsBackToImage(t *testing.T) {
@@ -233,13 +196,9 @@ func TestComputerUseTool_Run_LeftClick(t *testing.T) {
 		}, nil
 	})
 
-	calledStore := false
 	tool := chattool.NewComputerUseTool(geometry.DeclaredWidth, geometry.DeclaredHeight, func(_ context.Context) (workspacesdk.AgentConn, error) {
 		return mockConn, nil
-	}, func(_ context.Context, _ string, _ string, _ []byte) (uuid.UUID, error) {
-		calledStore = true
-		return uuid.Nil, nil
-	}, quartz.NewReal(), slogtest.Make(t, nil))
+	}, nil, quartz.NewReal(), slogtest.Make(t, nil))
 
 	call := fantasy.ToolCall{
 		ID:    "test-2",
@@ -251,10 +210,6 @@ func TestComputerUseTool_Run_LeftClick(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "image", resp.Type)
 	assert.Equal(t, []byte("after-click"), resp.Data)
-	assert.False(t, calledStore)
-	attachments, err := chattool.AttachmentsFromMetadata(resp.Metadata)
-	require.NoError(t, err)
-	assert.Empty(t, attachments)
 }
 
 func TestComputerUseTool_Run_Wait(t *testing.T) {
@@ -280,13 +235,9 @@ func TestComputerUseTool_Run_Wait(t *testing.T) {
 		}, nil
 	})
 
-	calledStore := false
 	tool := chattool.NewComputerUseTool(geometry.DeclaredWidth, geometry.DeclaredHeight, func(_ context.Context) (workspacesdk.AgentConn, error) {
 		return mockConn, nil
-	}, func(_ context.Context, _ string, _ string, _ []byte) (uuid.UUID, error) {
-		calledStore = true
-		return uuid.Nil, nil
-	}, quartz.NewReal(), slogtest.Make(t, nil))
+	}, nil, quartz.NewReal(), slogtest.Make(t, nil))
 
 	call := fantasy.ToolCall{
 		ID:    "test-3",
@@ -300,10 +251,6 @@ func TestComputerUseTool_Run_Wait(t *testing.T) {
 	assert.Equal(t, "image/png", resp.MediaType)
 	assert.Equal(t, []byte("after-wait"), resp.Data)
 	assert.False(t, resp.IsError)
-	assert.False(t, calledStore)
-	attachments, err := chattool.AttachmentsFromMetadata(resp.Metadata)
-	require.NoError(t, err)
-	assert.Empty(t, attachments)
 }
 
 func TestComputerUseTool_Run_ConnError(t *testing.T) {

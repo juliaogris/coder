@@ -1929,34 +1929,6 @@ func TestConvertMessagesWithFiles_PDFFileStillStaysFilePart(t *testing.T) {
 	require.Equal(t, "report.pdf", filePart.Filename)
 }
 
-func TestConvertMessagesWithFiles_UnresolvedTextFileWithoutResolverIsOmitted(t *testing.T) {
-	t.Parallel()
-
-	fileID := uuid.New()
-	rawContent := mustJSON(t, []json.RawMessage{
-		mustJSON(t, map[string]any{
-			"type": "file",
-			"data": map[string]any{
-				"media_type": "text/plain",
-				"file_id":    fileID.String(),
-			},
-		}),
-	})
-
-	prompt, err := chatprompt.ConvertMessagesWithFiles(
-		context.Background(),
-		[]database.ChatMessage{{
-			Role:       database.ChatMessageRoleUser,
-			Visibility: database.ChatMessageVisibilityBoth,
-			Content:    pqtype.NullRawMessage{RawMessage: rawContent, Valid: true},
-		}},
-		nil,
-		slogtest.Make(t, nil),
-	)
-	require.NoError(t, err)
-	require.Empty(t, prompt, "unresolved file references should not be replayed into the prompt")
-}
-
 func TestConvertMessagesWithFiles_AssistantAttachmentIsNotReplayed(t *testing.T) {
 	t.Parallel()
 

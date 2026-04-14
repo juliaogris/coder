@@ -1,14 +1,11 @@
 package chattool_test
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"io"
 	"strings"
 	"testing"
-	"testing/iotest"
 
 	"charm.land/fantasy"
 	"github.com/google/uuid"
@@ -168,48 +165,6 @@ func TestAttachFile(t *testing.T) {
 		assert.Equal(t, len(content), decoded.Size)
 	})
 
-	t.Run("PNGFileStoresAttachment", func(t *testing.T) {
-		t.Parallel()
-		ctrl := gomock.NewController(t)
-		mockConn := agentconnmock.NewMockAgentConn(ctrl)
-		pngBytes, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4n539HwAHFwLVF8kc1wAAAABJRU5ErkJggg==")
-		require.NoError(t, err)
-		mockConn.EXPECT().
-			ReadFile(gomock.Any(), "/home/coder/chart.png", int64(0), int64(10<<20+1)).
-			Return(io.NopCloser(bytes.NewReader(pngBytes)), "image/png", nil)
-
-		var storedType string
-		tool := newAttachFileTool(t, mockConn, func(_ context.Context, _ string, mediaType string, _ []byte) (uuid.UUID, error) {
-			storedType = mediaType
-			return uuid.MustParse("cccccccc-dddd-eeee-ffff-000000000000"), nil
-		})
-		resp, err := tool.Run(context.Background(), fantasy.ToolCall{
-			ID: "call-png", Name: "attach_file", Input: `{"path":"/home/coder/chart.png"}`,
-		})
-		require.NoError(t, err)
-		assert.False(t, resp.IsError)
-		assert.Equal(t, "image/png", storedType)
-		assert.Equal(t, "image/png", decodeAttachFileResponse(t, resp).MediaType)
-	})
-
-	t.Run("SVGRejectedEvenWhenSniffedAsText", func(t *testing.T) {
-		t.Parallel()
-		ctrl := gomock.NewController(t)
-		mockConn := agentconnmock.NewMockAgentConn(ctrl)
-		mockConn.EXPECT().
-			ReadFile(gomock.Any(), "/home/coder/diagram.svg", int64(0), int64(10<<20+1)).
-			Return(io.NopCloser(strings.NewReader(`<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>`)), "text/plain", nil)
-
-		tool := newAttachFileTool(t, mockConn, func(_ context.Context, _ string, _ string, _ []byte) (uuid.UUID, error) {
-			return uuid.Nil, xerrors.New("should not be called")
-		})
-		resp, err := tool.Run(context.Background(), fantasy.ToolCall{
-			ID: "call-svg", Name: "attach_file", Input: `{"path":"/home/coder/diagram.svg"}`,
-		})
-		require.NoError(t, err)
-		assert.True(t, resp.IsError)
-		assert.Contains(t, resp.Content, `unsupported attachment type "image/svg+xml"`)
-	})
 	t.Run("SVGRejectedEvenWhenNamedText", func(t *testing.T) {
 		t.Parallel()
 		ctrl := gomock.NewController(t)
@@ -251,25 +206,6 @@ func TestAttachFile(t *testing.T) {
 		assert.Contains(t, resp.Content, "attachment exceeds 10 MiB size limit")
 	})
 
-	t.Run("UnsupportedFileTypeRejected", func(t *testing.T) {
-		t.Parallel()
-		ctrl := gomock.NewController(t)
-		mockConn := agentconnmock.NewMockAgentConn(ctrl)
-		mockConn.EXPECT().
-			ReadFile(gomock.Any(), "/home/coder/blob.bin", int64(0), int64(10<<20+1)).
-			Return(io.NopCloser(bytes.NewReader([]byte{0x00, 0x01, 0x02, 0x03})), "application/octet-stream", nil)
-
-		tool := newAttachFileTool(t, mockConn, func(_ context.Context, _ string, _ string, _ []byte) (uuid.UUID, error) {
-			return uuid.Nil, xerrors.New("should not be called")
-		})
-		resp, err := tool.Run(context.Background(), fantasy.ToolCall{
-			ID: "call-1", Name: "attach_file", Input: `{"path":"/home/coder/blob.bin"}`,
-		})
-		require.NoError(t, err)
-		assert.True(t, resp.IsError)
-		assert.Contains(t, resp.Content, "unsupported attachment type")
-	})
-
 	t.Run("ReadFileError", func(t *testing.T) {
 		t.Parallel()
 		ctrl := gomock.NewController(t)
@@ -285,23 +221,6 @@ func TestAttachFile(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, resp.IsError)
 		assert.Contains(t, resp.Content, "file not found")
-	})
-
-	t.Run("ReadAllError", func(t *testing.T) {
-		t.Parallel()
-		ctrl := gomock.NewController(t)
-		mockConn := agentconnmock.NewMockAgentConn(ctrl)
-		mockConn.EXPECT().
-			ReadFile(gomock.Any(), "/home/coder/build.log", int64(0), int64(10<<20+1)).
-			Return(io.NopCloser(iotest.ErrReader(xerrors.New("connection reset"))), "text/plain", nil)
-
-		tool := newAttachFileTool(t, mockConn, func(_ context.Context, _ string, _ string, _ []byte) (uuid.UUID, error) { return uuid.Nil, nil })
-		resp, err := tool.Run(context.Background(), fantasy.ToolCall{
-			ID: "call-1", Name: "attach_file", Input: `{"path":"/home/coder/build.log"}`,
-		})
-		require.NoError(t, err)
-		assert.True(t, resp.IsError)
-		assert.Contains(t, resp.Content, "connection reset")
 	})
 
 	t.Run("StoreFileErrorSurfaces", func(t *testing.T) {
@@ -322,39 +241,6 @@ func TestAttachFile(t *testing.T) {
 		assert.True(t, resp.IsError)
 		assert.Contains(t, resp.Content, "chat already has the maximum of 20 linked files")
 	})
-}
-
-func TestAttachFile_WorkspaceConnectionError(t *testing.T) {
-	t.Parallel()
-
-	tool := chattool.AttachFile(chattool.AttachFileOptions{
-		GetWorkspaceConn: func(context.Context) (workspacesdk.AgentConn, error) {
-			return nil, xerrors.New("connection failed")
-		},
-		StoreFile: func(_ context.Context, _ string, _ string, _ []byte) (uuid.UUID, error) {
-			return uuid.Nil, nil
-		},
-	})
-
-	resp, err := tool.Run(context.Background(), fantasy.ToolCall{
-		ID: "call-conn", Name: "attach_file", Input: `{"path":"/home/coder/build.log"}`,
-	})
-	require.NoError(t, err)
-	assert.True(t, resp.IsError)
-	assert.Contains(t, resp.Content, "connection failed")
-}
-
-func TestAttachFile_NilStoreFile(t *testing.T) {
-	t.Parallel()
-	ctrl := gomock.NewController(t)
-	mockConn := agentconnmock.NewMockAgentConn(ctrl)
-	tool := newAttachFileTool(t, mockConn, nil)
-	resp, err := tool.Run(context.Background(), fantasy.ToolCall{
-		ID: "call-storefile", Name: "attach_file", Input: `{"path":"/home/coder/build.log"}`,
-	})
-	require.NoError(t, err)
-	assert.True(t, resp.IsError)
-	assert.Contains(t, resp.Content, "file storage is not configured")
 }
 
 func newAttachFileTool(

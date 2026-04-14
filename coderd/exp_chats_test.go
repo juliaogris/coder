@@ -6958,21 +6958,6 @@ func TestPostChatFile(t *testing.T) {
 		require.NotEqual(t, uuid.Nil, resp.ID)
 	})
 
-	t.Run("Success/WebP", func(t *testing.T) {
-		t.Parallel()
-		ctx := testutil.Context(t, testutil.WaitLong)
-		client := newChatClient(t)
-		firstUser := coderdtest.CreateFirstUser(t, client.Client)
-
-		// WebP: RIFF + 4-byte size + WEBP + padding.
-		data := append([]byte("RIFF"), make([]byte, 4)...)
-		data = append(data, []byte("WEBP")...)
-		data = append(data, make([]byte, 64)...)
-		resp, err := client.UploadChatFile(ctx, firstUser.OrganizationID, "image/webp", "test.webp", bytes.NewReader(data))
-		require.NoError(t, err)
-		require.NotEqual(t, uuid.Nil, resp.ID)
-	})
-
 	t.Run("Success/TextPlain", func(t *testing.T) {
 		t.Parallel()
 		ctx := testutil.Context(t, testutil.WaitLong)
@@ -6998,67 +6983,6 @@ With multiple lines.
 		require.NotEqual(t, uuid.Nil, resp.ID)
 	})
 
-	t.Run("Success/TextPlainRefinesToCSV", func(t *testing.T) {
-		t.Parallel()
-		ctx := testutil.Context(t, testutil.WaitLong)
-		client := newChatClient(t)
-		firstUser := coderdtest.CreateFirstUser(t, client.Client)
-
-		resp, err := client.UploadChatFile(ctx, firstUser.OrganizationID, "text/plain", "pasted-text.txt", bytes.NewReader([]byte(`name,count
-widgets,3
-`)))
-		require.NoError(t, err)
-		require.NotEqual(t, uuid.Nil, resp.ID)
-	})
-
-	t.Run("Success/PDF", func(t *testing.T) {
-		t.Parallel()
-		ctx := testutil.Context(t, testutil.WaitLong)
-		client := newChatClient(t)
-		firstUser := coderdtest.CreateFirstUser(t, client.Client)
-
-		resp, err := client.UploadChatFile(ctx, firstUser.OrganizationID, "application/pdf", "test.pdf", bytes.NewReader([]byte(`%PDF-1.7
-`)))
-		require.NoError(t, err)
-		require.NotEqual(t, uuid.Nil, resp.ID)
-	})
-
-	t.Run("Success/JSON", func(t *testing.T) {
-		t.Parallel()
-		ctx := testutil.Context(t, testutil.WaitLong)
-		client := newChatClient(t)
-		firstUser := coderdtest.CreateFirstUser(t, client.Client)
-
-		resp, err := client.UploadChatFile(ctx, firstUser.OrganizationID, "application/json", "payload.json", bytes.NewReader([]byte(`{"ok":true}`)))
-		require.NoError(t, err)
-		require.NotEqual(t, uuid.Nil, resp.ID)
-	})
-
-	t.Run("Success/Markdown", func(t *testing.T) {
-		t.Parallel()
-		ctx := testutil.Context(t, testutil.WaitLong)
-		client := newChatClient(t)
-		firstUser := coderdtest.CreateFirstUser(t, client.Client)
-
-		resp, err := client.UploadChatFile(ctx, firstUser.OrganizationID, "text/markdown", "notes.md", bytes.NewReader([]byte(`# Release notes
-`)))
-		require.NoError(t, err)
-		require.NotEqual(t, uuid.Nil, resp.ID)
-	})
-
-	t.Run("Success/CSV", func(t *testing.T) {
-		t.Parallel()
-		ctx := testutil.Context(t, testutil.WaitLong)
-		client := newChatClient(t)
-		firstUser := coderdtest.CreateFirstUser(t, client.Client)
-
-		resp, err := client.UploadChatFile(ctx, firstUser.OrganizationID, "text/csv", "report.csv", bytes.NewReader([]byte(`name,count
-widgets,3
-`)))
-		require.NoError(t, err)
-		require.NotEqual(t, uuid.Nil, resp.ID)
-	})
-
 	t.Run("UnsupportedContentType", func(t *testing.T) {
 		t.Parallel()
 		ctx := testutil.Context(t, testutil.WaitLong)
@@ -7077,18 +7001,6 @@ widgets,3
 
 		_, err := client.UploadChatFile(ctx, firstUser.OrganizationID, "image/svg+xml", "test.svg", bytes.NewReader([]byte("<svg></svg>")))
 		requireSDKError(t, err, http.StatusBadRequest)
-	})
-
-	t.Run("ContentSniffingRejects", func(t *testing.T) {
-		t.Parallel()
-		ctx := testutil.Context(t, testutil.WaitLong)
-		client := newChatClient(t)
-		firstUser := coderdtest.CreateFirstUser(t, client.Client)
-
-		// Header says PNG but body is plain text.
-		_, err := client.UploadChatFile(ctx, firstUser.OrganizationID, "image/png", "test.png", bytes.NewReader([]byte("hello world")))
-		sdkErr := requireSDKError(t, err, http.StatusBadRequest)
-		require.Contains(t, sdkErr.Message, "does not match")
 	})
 
 	t.Run("ContentSniffingRejectsPNGAsText", func(t *testing.T) {

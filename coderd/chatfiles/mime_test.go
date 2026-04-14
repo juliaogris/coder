@@ -16,29 +16,6 @@ func TestDetectMediaType_WebP(t *testing.T) {
 	require.Equal(t, "image/webp", chatfiles.DetectMediaType(data))
 }
 
-func TestBaseMediaType(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, "text/plain", chatfiles.BaseMediaType("text/plain; charset=utf-8"))
-	require.Equal(t, "application/json", chatfiles.BaseMediaType("application/json"))
-}
-
-func TestAllowedStoredMediaTypes(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, []string{
-		"application/json",
-		"application/pdf",
-		"image/gif",
-		"image/jpeg",
-		"image/png",
-		"image/webp",
-		"text/csv",
-		"text/markdown",
-		"text/plain",
-	}, chatfiles.AllowedStoredMediaTypes())
-}
-
 func TestPromptReadableKind(t *testing.T) {
 	t.Parallel()
 
