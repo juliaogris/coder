@@ -1252,10 +1252,10 @@ func TestGetAuthorizedChats(t *testing.T) {
 		RBACRoles: []string{rbac.RoleOwner().String()},
 	})
 	member := dbgen.User(t, db, database.User{
-		RBACRoles: pq.StringArray{rbac.RoleAgentsAccess().String()},
+		RBACRoles: pq.StringArray{rbac.RoleAgentsAccess()},
 	})
 	secondMember := dbgen.User(t, db, database.User{
-		RBACRoles: pq.StringArray{rbac.RoleAgentsAccess().String()},
+		RBACRoles: pq.StringArray{rbac.RoleAgentsAccess()},
 	})
 
 	org := dbgen.Organization(t, db, database.Organization{})
@@ -1439,7 +1439,7 @@ func TestGetAuthorizedChats(t *testing.T) {
 		// Use a dedicated user for pagination to avoid interference
 		// with the other parallel subtests.
 		paginationUser := dbgen.User(t, db, database.User{
-			RBACRoles: pq.StringArray{rbac.RoleAgentsAccess().String()},
+			RBACRoles: pq.StringArray{rbac.RoleAgentsAccess()},
 		})
 		dbgen.OrganizationMember(t, db, database.OrganizationMember{UserID: paginationUser.ID, OrganizationID: org.ID})
 		for i := range 7 {

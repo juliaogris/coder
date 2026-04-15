@@ -168,6 +168,7 @@ func ConvertDBRole(dbRole database.CustomRole) (rbac.Role, error) {
 var systemRoles = map[string]permissionsFunc{
 	rbac.RoleOrgMember():         rbac.OrgMemberPermissions,
 	rbac.RoleOrgServiceAccount(): rbac.OrgServiceAccountPermissions,
+	rbac.RoleAgentsAccess():      rbac.AgentsAccessPermissions,
 }
 
 // permissionsFunc produces the desired permissions for a system role

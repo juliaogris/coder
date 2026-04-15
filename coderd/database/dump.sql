@@ -826,40 +826,30 @@ CREATE FUNCTION insert_organization_system_roles() RETURNS trigger
     AS $$
 BEGIN
     INSERT INTO custom_roles (
-        name,
-        display_name,
-        organization_id,
-        site_permissions,
-        org_permissions,
-        user_permissions,
-        member_permissions,
-        is_system,
-        created_at,
-        updated_at
+        name, display_name, organization_id,
+        site_permissions, org_permissions, user_permissions, member_permissions,
+        is_system, created_at, updated_at
     ) VALUES
     (
         'organization-member',
         '',
         NEW.id,
-        '[]'::jsonb,
-        '[]'::jsonb,
-        '[]'::jsonb,
-        '[]'::jsonb,
-        true,
-        NOW(),
-        NOW()
+        '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
+        true, NOW(), NOW()
     ),
     (
         'organization-service-account',
         '',
         NEW.id,
-        '[]'::jsonb,
-        '[]'::jsonb,
-        '[]'::jsonb,
-        '[]'::jsonb,
-        true,
-        NOW(),
-        NOW()
+        '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
+        true, NOW(), NOW()
+    ),
+    (
+        'agents-access',
+        'Coder Agents User',
+        NEW.id,
+        '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
+        true, NOW(), NOW()
     );
     RETURN NEW;
 END;

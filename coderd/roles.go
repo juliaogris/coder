@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"cdr.dev/slog/v3"
 	"github.com/coder/coder/v2/buildinfo"
 	"github.com/coder/coder/v2/coderd/database"
 	"github.com/coder/coder/v2/coderd/database/db2sdk"
@@ -45,12 +46,6 @@ func (api *API) AssignableSiteRoles(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	siteRoles := rbac.SiteBuiltInRoles()
-	// Include the agents-access role only when the agents
-	// experiment is enabled or this is a dev build, matching
-	// the RequireExperimentWithDevBypass gate on chat routes.
-	if api.Experiments.Enabled(codersdk.ExperimentAgents) || buildinfo.IsDev() {
-		siteRoles = append(siteRoles, rbac.AgentsAccessRole())
-	}
 
 	httpapi.Write(ctx, rw, http.StatusOK,
 		assignableRoles(actorRoles.Roles, siteRoles, dbCustomRoles))
@@ -86,6 +81,25 @@ func (api *API) assignableOrgRoles(rw http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		httpapi.InternalServerError(rw, err)
 		return
+	}
+
+	// Include the agents-access role only when the agents
+	// experiment is enabled or this is a dev build, matching
+	// the RequireExperimentWithDevBypass gate on chat routes.
+	if api.Experiments.Enabled(codersdk.ExperimentAgents) || buildinfo.IsDev() {
+		agentsAccessRoles, err := api.Database.CustomRoles(ctx, database.CustomRolesParams{
+			LookupRoles: []database.NameOrganizationPair{
+				{Name: rbac.RoleAgentsAccess(), OrganizationID: organization.ID},
+			},
+			ExcludeOrgRoles:    false,
+			OrganizationID:     uuid.Nil,
+			IncludeSystemRoles: true,
+		})
+		if err != nil {
+			api.Logger.Error(ctx, "failed to fetch agents-access role", slog.Error(err))
+		} else {
+			dbCustomRoles = append(dbCustomRoles, agentsAccessRoles...)
+		}
 	}
 
 	httpapi.Write(ctx, rw, http.StatusOK, assignableRoles(actorRoles.Roles, roles, dbCustomRoles))
