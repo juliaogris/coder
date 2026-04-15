@@ -1158,7 +1158,8 @@ func ModelFromConfig(
 	}
 
 	apiKey := providerKeys.APIKey(provider)
-	if apiKey == "" && !ProviderAllowsAmbientCredentials(provider) {
+	if apiKey == "" &&
+		!(ProviderAllowsAmbientCredentials(provider) && providerKeys.HasProvider(provider)) {
 		return nil, missingProviderAPIKeyError(provider)
 	}
 	baseURL := providerKeys.BaseURL(provider)
@@ -1282,7 +1283,8 @@ func providerCreationError(provider string, err error) error {
 }
 
 // Providers that allow ambient credentials, such as Bedrock, bypass
-// this helper.
+// this helper only after ResolveUserProviderKeys marks them
+// available.
 func missingProviderAPIKeyError(provider string) error {
 	switch provider {
 	case fantasyanthropic.Name:

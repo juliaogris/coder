@@ -838,6 +838,20 @@ func TestModelFromConfig_Bedrock(t *testing.T) {
 		require.Equal(t, fantasybedrock.Name, model.Provider())
 	})
 
+	t.Run("RequiresResolvedProviderForAmbientCredentials", func(t *testing.T) {
+		t.Parallel()
+
+		model, err := chatprovider.ModelFromConfig(
+			fantasybedrock.Name,
+			modelID,
+			chatprovider.ProviderAPIKeys{},
+			chatprovider.UserAgent(),
+			nil,
+		)
+		require.Nil(t, model)
+		require.EqualError(t, err, "API key for provider \"bedrock\" is not set")
+	})
+
 	t.Run("ForwardsBaseURLAndExplicitAPIKey", func(t *testing.T) {
 		t.Parallel()
 		ctx := testutil.Context(t, testutil.WaitShort)

@@ -818,13 +818,11 @@ export const ProviderFormBedrockAmbientCredentials: Story = {
 		section: "providers" as ChatModelAdminSection,
 		providerConfigsData: [
 			createProviderConfig({
-				id: "provider-bedrock-ambient",
+				id: nilProviderConfigID,
 				provider: "bedrock",
 				display_name: "AWS Bedrock",
-				has_api_key: false,
-				central_api_key_enabled: true,
-				allow_user_api_key: false,
-				allow_central_api_key_fallback: false,
+				source: "supported",
+				enabled: false,
 			}),
 		],
 		modelCatalogData: { providers: [] },
@@ -836,8 +834,9 @@ export const ProviderFormBedrockAmbientCredentials: Story = {
 		);
 
 		const apiKeyInput = await body.findByLabelText(/^API Key$/i);
-		const baseURLInput = body.getByLabelText("Base URL");
-		const saveButton = body.getByRole("button", { name: "Save changes" });
+		const createButton = body.getByRole("button", {
+			name: "Create provider config",
+		});
 
 		await expect(apiKeyInput).not.toBeRequired();
 		await expect(apiKeyInput).toHaveAttribute(
@@ -859,29 +858,24 @@ export const ProviderFormBedrockAmbientCredentials: Story = {
 				/Overrides the Bedrock runtime endpoint\.\s+Set AWS_REGION on\s+the Coder server to select the target region\./i,
 			),
 		).resolves.toBeInTheDocument();
-		expect(saveButton).toBeDisabled();
+		await expect(createButton).toBeEnabled();
 
-		await userEvent.type(
-			baseURLInput,
-			"https://bedrock-runtime.us-west-2.amazonaws.com",
-		);
+		await userEvent.click(createButton);
 		await waitFor(() => {
-			expect(saveButton).toBeEnabled();
+			expect(args.onCreateProvider).toHaveBeenCalledTimes(1);
 		});
-		await userEvent.click(saveButton);
-
-		await waitFor(() => {
-			expect(args.onUpdateProvider).toHaveBeenCalledTimes(1);
-		});
-		const updateProviderMock = args.onUpdateProvider as ReturnType<typeof fn>;
-		const updateRequest = updateProviderMock.mock.calls[0][1] as Record<
+		const createProviderMock = args.onCreateProvider as ReturnType<typeof fn>;
+		const createRequest = createProviderMock.mock.calls[0][0] as Record<
 			string,
 			unknown
 		>;
-		expect(updateRequest).toMatchObject({
-			base_url: "https://bedrock-runtime.us-west-2.amazonaws.com",
+		expect(createRequest).toMatchObject({
+			provider: "bedrock",
+			central_api_key_enabled: true,
+			allow_user_api_key: false,
+			allow_central_api_key_fallback: false,
 		});
-		expect(updateRequest).not.toHaveProperty("api_key");
+		expect(createRequest).not.toHaveProperty("api_key");
 	},
 };
 

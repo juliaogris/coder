@@ -143,6 +143,10 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 			"keys that users have saved for this provider will also be " +
 			"permanently deleted. This action is irreversible."
 		: "Are you sure you want to delete this provider? This action is irreversible.";
+	// New Bedrock providers can be saved immediately with ambient AWS
+	// credentials, even before any fields differ from their defaults.
+	const hasNewBedrockAmbientConfiguration =
+		isBedrockProvider && !providerConfig && centralAPIKeyEnabled;
 
 	const isDirty =
 		displayName.trim() !== initialValues.displayName ||
@@ -150,7 +154,8 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 		baseURLValue.trim() !== initialValues.baseURL.trim() ||
 		centralAPIKeyEnabled !== initialValues.centralAPIKeyEnabled ||
 		allowUserAPIKey !== initialValues.allowUserAPIKey ||
-		effectiveFallback !== effectiveInitialFallback;
+		effectiveFallback !== effectiveInitialFallback ||
+		hasNewBedrockAmbientConfiguration;
 
 	const canSave =
 		!providerConfigsUnavailable &&
