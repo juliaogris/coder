@@ -1830,9 +1830,35 @@ func TestCreateChatProvider(t *testing.T) {
 		require.Equal(t, "bedrock", provider.Provider)
 		require.Equal(t, "AWS Bedrock", provider.DisplayName)
 		require.True(t, provider.Enabled)
-		require.False(t, provider.HasAPIKey)
+		require.True(t, provider.HasAPIKey)
 		require.True(t, provider.CentralAPIKeyEnabled)
 		require.Equal(t, codersdk.ChatProviderConfigSourceDatabase, provider.Source)
+	})
+
+	t.Run("ReportsBedrockAmbientFallbackForUserConfigs", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := testutil.Context(t, testutil.WaitLong)
+		client := newChatClient(t)
+		_ = coderdtest.CreateFirstUser(t, client.Client)
+
+		provider, err := client.CreateChatProvider(ctx, codersdk.CreateChatProviderConfigRequest{
+			Provider:                   "bedrock",
+			DisplayName:                "AWS Bedrock Fallback",
+			CentralAPIKeyEnabled:       ptr.Ref(true),
+			AllowUserAPIKey:            ptr.Ref(true),
+			AllowCentralAPIKeyFallback: ptr.Ref(true),
+		})
+		require.NoError(t, err)
+		require.True(t, provider.HasAPIKey)
+
+		configs, err := client.ListUserChatProviderConfigs(ctx)
+		require.NoError(t, err)
+		require.Len(t, configs, 1)
+		require.Equal(t, provider.ID, configs[0].ProviderID)
+		require.Equal(t, provider.Provider, configs[0].Provider)
+		require.False(t, configs[0].HasUserAPIKey)
+		require.True(t, configs[0].HasCentralAPIKeyFallback)
 	})
 
 	t.Run("AllowsBedrockWithExplicitAPIKey", func(t *testing.T) {
@@ -2107,7 +2133,7 @@ func TestUpdateChatProvider(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, provider.ID, updated.ID)
 		require.Equal(t, "bedrock", updated.Provider)
-		require.False(t, updated.HasAPIKey)
+		require.True(t, updated.HasAPIKey)
 		require.True(t, updated.CentralAPIKeyEnabled)
 	})
 

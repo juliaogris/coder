@@ -5590,6 +5590,9 @@ func (api *API) hasEffectiveCentralProviderAPIKey(
 	if strings.TrimSpace(provider.APIKey) != "" {
 		return true
 	}
+	if chatprovider.ProviderAllowsAmbientCredentials(provider.Provider) {
+		return true
+	}
 	deploymentKeys := ChatProviderAPIKeysFromDeploymentValues(api.DeploymentValues)
 	if deploymentKeys.APIKey(provider.Provider) != "" {
 		return true
