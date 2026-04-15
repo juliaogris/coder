@@ -54,6 +54,41 @@ func TestBuildAssistantPartsForPersist_PromotesToolAttachments(t *testing.T) {
 	require.Equal(t, "screenshot.png", parts[1].Name)
 }
 
+func TestBuildAssistantPartsForPersist_PromotesProposePlanAttachment(t *testing.T) {
+	t.Parallel()
+
+	fileID := uuid.MustParse("bbbbbbbb-cccc-dddd-eeee-ffffffffffff")
+	response := chattool.WithAttachments(
+		fantasy.NewTextResponse(`{"ok":true,"kind":"plan"}`),
+		chattool.AttachmentMetadata{
+			FileID:    fileID,
+			MediaType: "text/markdown",
+			Name:      "PLAN.md",
+		},
+	)
+
+	parts, err := buildAssistantPartsForPersist(
+		[]fantasy.Content{fantasy.TextContent{Text: "Here is the proposed plan."}},
+		[]fantasy.ToolResultContent{{
+			ToolCallID:     "call-plan",
+			ToolName:       "propose_plan",
+			ClientMetadata: response.Metadata,
+		}},
+		chatloop.PersistedStep{},
+		nil,
+	)
+	require.NoError(t, err)
+
+	require.Len(t, parts, 2)
+	require.Equal(t, codersdk.ChatMessagePartTypeText, parts[0].Type)
+	require.Equal(t, "Here is the proposed plan.", parts[0].Text)
+	require.Equal(t, codersdk.ChatMessagePartTypeFile, parts[1].Type)
+	require.True(t, parts[1].FileID.Valid)
+	require.Equal(t, fileID, parts[1].FileID.UUID)
+	require.Equal(t, "text/markdown", parts[1].MediaType)
+	require.Equal(t, "PLAN.md", parts[1].Name)
+}
+
 func TestBuildAssistantPartsForPersist_InvalidAttachmentMetadataFails(t *testing.T) {
 	t.Parallel()
 

@@ -112,16 +112,22 @@ func executeProposePlanTool(
 		return fantasy.NewTextErrorResponse("plan file exceeds 32 KiB size limit"), nil
 	}
 
-	fileID, err := storeFile(ctx, filepath.Base(requestedPath), "text/markdown", data)
+	attachmentName := filepath.Base(requestedPath)
+	fileID, err := storeFile(ctx, attachmentName, "text/markdown", data)
 	if err != nil {
 		return fantasy.NewTextErrorResponse("failed to store plan file: " + err.Error()), nil
 	}
 
-	return toolResponse(map[string]any{
+	attachment := AttachmentMetadata{
+		FileID:    fileID,
+		MediaType: "text/markdown",
+		Name:      attachmentName,
+	}
+	return toolResponseWithAttachments(map[string]any{
 		"ok":         true,
 		"path":       requestedPath,
 		"kind":       "plan",
 		"file_id":    fileID.String(),
-		"media_type": "text/markdown",
-	}), nil
+		"media_type": attachment.MediaType,
+	}, attachment), nil
 }

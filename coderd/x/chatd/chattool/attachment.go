@@ -135,6 +135,16 @@ func storeScreenshotAttachment(
 	return storeAttachmentData(ctx, storeFile, name, name, data)
 }
 
+// toolResponseWithAttachments builds a JSON tool response and couples it with
+// durable attachment metadata so file-producing tools cannot forget the
+// persistence path.
+func toolResponseWithAttachments(
+	result map[string]any,
+	attachments ...AttachmentMetadata,
+) fantasy.ToolResponse {
+	return WithAttachments(toolResponse(result), attachments...)
+}
+
 // WithAttachments stores durable attachment metadata on a tool response so the
 // persistence layer can promote the files into assistant chat attachments.
 func WithAttachments(
