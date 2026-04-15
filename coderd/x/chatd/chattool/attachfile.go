@@ -67,12 +67,12 @@ func executeAttachFileTool(
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 
-	return toolResponseWithAttachments(map[string]any{
+	return WithAttachments(toolResponse(map[string]any{
 		"ok":         true,
 		"path":       path,
 		"file_id":    attachment.FileID.String(),
 		"name":       attachment.Name,
 		"media_type": attachment.MediaType,
 		"size":       size,
-	}, attachment), nil
+	}), attachment), nil
 }

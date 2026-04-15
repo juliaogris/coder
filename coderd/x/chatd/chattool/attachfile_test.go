@@ -35,7 +35,9 @@ func TestAttachFile(t *testing.T) {
 		t.Parallel()
 		ctrl := gomock.NewController(t)
 		mockConn := agentconnmock.NewMockAgentConn(ctrl)
-		tool := newAttachFileTool(t, mockConn, func(_ context.Context, _ string, _ string, _ []byte) (uuid.UUID, error) { return uuid.Nil, nil })
+		tool := newAttachFileTool(t, mockConn, func(_ context.Context, _ string, _ string, _ []byte) (chattool.AttachmentMetadata, error) {
+			return chattool.AttachmentMetadata{}, nil
+		})
 		resp, err := tool.Run(context.Background(), fantasy.ToolCall{
 			ID: "call-1", Name: "attach_file", Input: `{"path":""}`,
 		})
@@ -51,7 +53,9 @@ func TestAttachFile(t *testing.T) {
 		mockConn.EXPECT().
 			ReadFile(gomock.Any(), "notes.txt", int64(0), int64(10<<20+1)).
 			Return(nil, "", xerrors.New(`file path must be absolute: "notes.txt"`))
-		tool := newAttachFileTool(t, mockConn, func(_ context.Context, _ string, _ string, _ []byte) (uuid.UUID, error) { return uuid.Nil, nil })
+		tool := newAttachFileTool(t, mockConn, func(_ context.Context, _ string, _ string, _ []byte) (chattool.AttachmentMetadata, error) {
+			return chattool.AttachmentMetadata{}, nil
+		})
 		resp, err := tool.Run(context.Background(), fantasy.ToolCall{
 			ID: "call-1", Name: "attach_file", Input: `{"path":"notes.txt"}`,
 		})
@@ -72,11 +76,16 @@ func TestAttachFile(t *testing.T) {
 		var storedName string
 		var storedType string
 		var storedData []byte
-		tool := newAttachFileTool(t, mockConn, func(_ context.Context, name string, mediaType string, data []byte) (uuid.UUID, error) {
+		tool := newAttachFileTool(t, mockConn, func(_ context.Context, name string, detectName string, data []byte) (chattool.AttachmentMetadata, error) {
 			storedName = name
-			storedType = mediaType
+			require.Equal(t, "/home/coder/build.log", detectName)
+			storedType = "text/plain"
 			storedData = append([]byte(nil), data...)
-			return uuid.MustParse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"), nil
+			return chattool.AttachmentMetadata{
+				FileID:    uuid.MustParse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+				MediaType: storedType,
+				Name:      name,
+			}, nil
 		})
 		resp, err := tool.Run(context.Background(), fantasy.ToolCall{
 			ID: "call-1", Name: "attach_file", Input: `{"path":"/home/coder/build.log"}`,
@@ -108,28 +117,35 @@ func TestAttachFile(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockConn := agentconnmock.NewMockAgentConn(ctrl)
 		content := "build succeeded\n"
+		path := `C:\Users\coder\build.log`
 		mockConn.EXPECT().
-			ReadFile(gomock.Any(), `C:\Users\coder\build.log`, int64(0), int64(10<<20+1)).
+			ReadFile(gomock.Any(), path, int64(0), int64(10<<20+1)).
 			Return(io.NopCloser(strings.NewReader(content)), "text/plain", nil)
 
 		var storedName string
-		tool := newAttachFileTool(t, mockConn, func(_ context.Context, name string, mediaType string, data []byte) (uuid.UUID, error) {
+		tool := newAttachFileTool(t, mockConn, func(_ context.Context, name string, detectName string, data []byte) (chattool.AttachmentMetadata, error) {
 			storedName = name
-			assert.Equal(t, "text/plain", mediaType)
+			require.Equal(t, path, detectName)
 			assert.Equal(t, []byte(content), data)
-			return uuid.MustParse("dddddddd-eeee-ffff-0000-111111111111"), nil
+			return chattool.AttachmentMetadata{
+				FileID:    uuid.MustParse("dddddddd-eeee-ffff-0000-111111111111"),
+				MediaType: "text/plain",
+				Name:      name,
+			}, nil
 		})
+		input, err := json.Marshal(chattool.AttachFileArgs{Path: path})
+		require.NoError(t, err)
 		resp, err := tool.Run(context.Background(), fantasy.ToolCall{
 			ID:    "call-windows",
 			Name:  "attach_file",
-			Input: `{"path":"C:\\Users\\coder\\build.log"}`,
+			Input: string(input),
 		})
 		require.NoError(t, err)
 		assert.False(t, resp.IsError)
 		assert.Equal(t, "build.log", storedName)
 
 		decoded := decodeAttachFileResponse(t, resp)
-		assert.Equal(t, `C:\Users\coder\build.log`, decoded.Path)
+		assert.Equal(t, path, decoded.Path)
 		assert.Equal(t, "build.log", decoded.Name)
 		assert.Equal(t, len(content), decoded.Size)
 	})
@@ -145,11 +161,16 @@ func TestAttachFile(t *testing.T) {
 
 		var storedName string
 		var storedType string
-		tool := newAttachFileTool(t, mockConn, func(_ context.Context, name string, mediaType string, data []byte) (uuid.UUID, error) {
+		tool := newAttachFileTool(t, mockConn, func(_ context.Context, name string, detectName string, data []byte) (chattool.AttachmentMetadata, error) {
 			storedName = name
-			storedType = mediaType
+			require.Equal(t, "/home/coder/report.json", detectName)
+			storedType = "application/json"
 			assert.Equal(t, []byte(content), data)
-			return uuid.MustParse("bbbbbbbb-cccc-dddd-eeee-ffffffffffff"), nil
+			return chattool.AttachmentMetadata{
+				FileID:    uuid.MustParse("bbbbbbbb-cccc-dddd-eeee-ffffffffffff"),
+				MediaType: storedType,
+				Name:      name,
+			}, nil
 		})
 		resp, err := tool.Run(context.Background(), fantasy.ToolCall{
 			ID: "call-json", Name: "attach_file", Input: `{"path":"/home/coder/report.json","name":"payload.txt"}`,
@@ -165,27 +186,6 @@ func TestAttachFile(t *testing.T) {
 		assert.Equal(t, len(content), decoded.Size)
 	})
 
-	t.Run("SVGRejectedEvenWhenNamedText", func(t *testing.T) {
-		t.Parallel()
-		ctrl := gomock.NewController(t)
-		mockConn := agentconnmock.NewMockAgentConn(ctrl)
-		mockConn.EXPECT().
-			ReadFile(gomock.Any(), "/home/coder/notes.txt", int64(0), int64(10<<20+1)).
-			Return(io.NopCloser(strings.NewReader(`<svg xmlns="http://www.w3.org/2000/svg"><text>Hello</text></svg>`)), "text/plain", nil)
-
-		tool := newAttachFileTool(t, mockConn, func(_ context.Context, _ string, _ string, _ []byte) (uuid.UUID, error) {
-			return uuid.Nil, xerrors.New("should not be called")
-		})
-		resp, err := tool.Run(context.Background(), fantasy.ToolCall{
-			ID:    "call-svg-text",
-			Name:  "attach_file",
-			Input: `{"path":"/home/coder/notes.txt"}`,
-		})
-		require.NoError(t, err)
-		assert.True(t, resp.IsError)
-		assert.Contains(t, resp.Content, `unsupported attachment type "image/svg+xml"`)
-	})
-
 	t.Run("OversizedFileRejected", func(t *testing.T) {
 		t.Parallel()
 		ctrl := gomock.NewController(t)
@@ -195,8 +195,8 @@ func TestAttachFile(t *testing.T) {
 			ReadFile(gomock.Any(), "/home/coder/build.log", int64(0), int64(10<<20+1)).
 			Return(io.NopCloser(strings.NewReader(largeContent)), "text/plain", nil)
 
-		tool := newAttachFileTool(t, mockConn, func(_ context.Context, _ string, _ string, _ []byte) (uuid.UUID, error) {
-			return uuid.Nil, xerrors.New("should not be called")
+		tool := newAttachFileTool(t, mockConn, func(_ context.Context, _ string, _ string, _ []byte) (chattool.AttachmentMetadata, error) {
+			return chattool.AttachmentMetadata{}, xerrors.New("should not be called")
 		})
 		resp, err := tool.Run(context.Background(), fantasy.ToolCall{
 			ID: "call-1", Name: "attach_file", Input: `{"path":"/home/coder/build.log"}`,
@@ -214,7 +214,9 @@ func TestAttachFile(t *testing.T) {
 			ReadFile(gomock.Any(), "/home/coder/build.log", int64(0), int64(10<<20+1)).
 			Return(nil, "", xerrors.New("file not found"))
 
-		tool := newAttachFileTool(t, mockConn, func(_ context.Context, _ string, _ string, _ []byte) (uuid.UUID, error) { return uuid.Nil, nil })
+		tool := newAttachFileTool(t, mockConn, func(_ context.Context, _ string, _ string, _ []byte) (chattool.AttachmentMetadata, error) {
+			return chattool.AttachmentMetadata{}, nil
+		})
 		resp, err := tool.Run(context.Background(), fantasy.ToolCall{
 			ID: "call-1", Name: "attach_file", Input: `{"path":"/home/coder/build.log"}`,
 		})
@@ -231,8 +233,8 @@ func TestAttachFile(t *testing.T) {
 			ReadFile(gomock.Any(), "/home/coder/build.log", int64(0), int64(10<<20+1)).
 			Return(io.NopCloser(strings.NewReader("build succeeded\n")), "text/plain", nil)
 
-		tool := newAttachFileTool(t, mockConn, func(_ context.Context, _ string, _ string, _ []byte) (uuid.UUID, error) {
-			return uuid.Nil, xerrors.New("chat already has the maximum of 20 linked files")
+		tool := newAttachFileTool(t, mockConn, func(_ context.Context, _ string, _ string, _ []byte) (chattool.AttachmentMetadata, error) {
+			return chattool.AttachmentMetadata{}, xerrors.New("chat already has the maximum of 20 linked files")
 		})
 		resp, err := tool.Run(context.Background(), fantasy.ToolCall{
 			ID: "call-cap", Name: "attach_file", Input: `{"path":"/home/coder/build.log"}`,

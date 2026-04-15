@@ -3220,8 +3220,6 @@ func parseCompactionThresholdKey(key string) (uuid.UUID, error) {
 const (
 	// maxChatFileSize is the maximum size of a chat file upload (10 MB).
 	maxChatFileSize = 10 << 20
-	// maxChatFileName is the maximum length of an uploaded file name.
-	maxChatFileName = 255
 )
 
 //nolint:revive // get-return: revive assumes get* must be a getter, but this is an HTTP handler.
@@ -3961,19 +3959,6 @@ func (api *API) postChatFile(rw http.ResponseWriter, r *http.Request) {
 	if cd := r.Header.Get("Content-Disposition"); cd != "" {
 		if _, params, err := mime.ParseMediaType(cd); err == nil {
 			filename = params["filename"]
-			if len(filename) > maxChatFileName {
-				// Truncate at rune boundary to avoid splitting
-				// multi-byte UTF-8 characters.
-				var truncated []byte
-				for _, r := range filename {
-					encoded := []byte(string(r))
-					if len(truncated)+len(encoded) > maxChatFileName {
-						break
-					}
-					truncated = append(truncated, encoded...)
-				}
-				filename = string(truncated)
-			}
 		}
 	}
 
@@ -3997,8 +3982,8 @@ func (api *API) postChatFile(rw http.ResponseWriter, r *http.Request) {
 
 	// Verify the actual content matches an allowed file type so that
 	// a client cannot spoof Content-Type to serve active content.
-	detected := chatfiles.ClassifyStoredMediaType(filename, data)
-	if !chatfiles.IsAllowedStoredMediaType(detected) {
+	filename, detected, err := chatfiles.PrepareStoredFile(filename, filename, data)
+	if err != nil {
 		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
 			Message: "Unsupported file type.",
 			Detail:  fmt.Sprintf("Allowed types: %s.", chatfiles.AllowedStoredMediaTypesString()),
@@ -4066,7 +4051,7 @@ func (api *API) chatFileByID(rw http.ResponseWriter, r *http.Request) {
 
 	rw.Header().Set("Content-Type", chatFile.Mimetype)
 	disposition := "attachment"
-	if chatfiles.IsInlineSafe(chatFile.Mimetype) {
+	if chatfiles.IsInlineRenderableStoredMediaType(chatFile.Mimetype) {
 		disposition = "inline"
 	}
 	if chatFile.Name != "" {

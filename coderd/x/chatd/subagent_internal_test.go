@@ -1141,7 +1141,9 @@ func TestWaitAgentDoesNotRelayComputerUseSubagentAttachments(t *testing.T) {
 	attachments, err := chattool.AttachmentsFromMetadata(resp.Metadata)
 	require.NoError(t, err)
 	assert.Empty(t, attachments)
-	parts, err := buildAssistantPartsForPersist(
+	parts := buildAssistantPartsForPersist(
+		context.Background(),
+		testutil.Logger(t),
 		nil,
 		[]fantasy.ToolResultContent{{
 			ToolCallID:     "call-1",
@@ -1151,7 +1153,6 @@ func TestWaitAgentDoesNotRelayComputerUseSubagentAttachments(t *testing.T) {
 		chatloop.PersistedStep{},
 		nil,
 	)
-	require.NoError(t, err)
 	assert.Empty(t, parts)
 
 	parentFiles, err := db.GetChatFileMetadataByChatID(ctx, parent.ID)

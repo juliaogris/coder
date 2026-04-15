@@ -1,6 +1,7 @@
 package chatfiles_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -50,10 +51,34 @@ func TestClassifyStoredMediaType(t *testing.T) {
 			want:     "application/json",
 		},
 		{
+			name:     "UppercaseJSONExtension",
+			fileName: "data.JSON",
+			data:     []byte(`{"ok":true}`),
+			want:     "application/json",
+		},
+		{
+			name:     "InvalidJSONExtensionFallsBackToPlainText",
+			fileName: "broken.json",
+			data:     []byte("not json"),
+			want:     "text/plain",
+		},
+		{
+			name:     "UppercaseMDExtension",
+			fileName: "NOTES.MD",
+			data:     []byte("# Notes\n"),
+			want:     "text/markdown",
+		},
+		{
 			name:     "PDF",
 			fileName: "report.pdf",
 			data:     []byte("%PDF-1.7\n"),
 			want:     "application/pdf",
+		},
+		{
+			name:     "BinaryOctetStream",
+			fileName: "data.bin",
+			data:     []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05},
+			want:     "application/octet-stream",
 		},
 		{
 			name:     "HTMLFallsBackToTextPlain",
@@ -73,15 +98,62 @@ func TestClassifyStoredMediaType(t *testing.T) {
 			data:     []byte(`<svg xmlns="http://www.w3.org/2000/svg"><text>Hello</text></svg>`),
 			want:     "image/svg+xml",
 		},
+		{
+			name:     "MarkdownMentioningSVGStaysMarkdown",
+			fileName: "notes.md",
+			data:     []byte("# SVG Example\n<svg width=\"100\">...</svg>"),
+			want:     "text/markdown",
+		},
+		{
+			name:     "CSVMentioningSVGStaysCSV",
+			fileName: "report.csv",
+			data:     []byte("name,icon\nlogo,<svg><rect/></svg>\n"),
+			want:     "text/csv",
+		},
+		{
+			name:     "TextMentioningSVGStaysPlainText",
+			fileName: "main.go",
+			data:     []byte("package main\n// renders <svg> tags\n"),
+			want:     "text/plain",
+		},
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.want, chatfiles.ClassifyStoredMediaType(tt.fileName, tt.data))
 		})
 	}
+}
+
+func TestPrepareStoredFile(t *testing.T) {
+	t.Parallel()
+
+	t.Run("UsesDetectNameForSubtypeRefinement", func(t *testing.T) {
+		t.Parallel()
+
+		name, mediaType, err := chatfiles.PrepareStoredFile(
+			"payload.txt",
+			"report.json",
+			[]byte(`{"ok":true}`),
+		)
+		require.NoError(t, err)
+		require.Equal(t, "payload.txt", name)
+		require.Equal(t, "application/json", mediaType)
+	})
+
+	t.Run("TruncatesNamesAtRuneBoundaries", func(t *testing.T) {
+		t.Parallel()
+
+		name, _, err := chatfiles.PrepareStoredFile(
+			strings.Repeat("界", 100),
+			"notes.txt",
+			[]byte("hello"),
+		)
+		require.NoError(t, err)
+		require.Equal(t, strings.Repeat("界", 85), name)
+		require.Equal(t, 255, len(name))
+	})
 }
 
 func TestIsCompatibleUploadMediaType(t *testing.T) {
@@ -132,7 +204,6 @@ func TestIsCompatibleUploadMediaType(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.want, chatfiles.IsCompatibleUploadMediaType(tt.declared, tt.stored))
@@ -140,18 +211,28 @@ func TestIsCompatibleUploadMediaType(t *testing.T) {
 	}
 }
 
-func TestIsInlineSafe(t *testing.T) {
+func TestIsAllowedStoredMediaType(t *testing.T) {
 	t.Parallel()
 
-	require.True(t, chatfiles.IsInlineSafe("text/plain; charset=utf-8"))
-	require.True(t, chatfiles.IsInlineSafe("text/markdown"))
-	require.True(t, chatfiles.IsInlineSafe("text/csv"))
-	require.True(t, chatfiles.IsInlineSafe("application/json"))
-	require.True(t, chatfiles.IsInlineSafe("application/pdf"))
-	require.True(t, chatfiles.IsInlineSafe("image/png"))
-	require.False(t, chatfiles.IsInlineSafe("image/svg+xml"))
-	require.False(t, chatfiles.IsInlineSafe("image/avif"))
-	require.False(t, chatfiles.IsInlineSafe("application/zip"))
+	require.True(t, chatfiles.IsAllowedStoredMediaType("text/plain; charset=utf-8"))
+	require.True(t, chatfiles.IsAllowedStoredMediaType("text/markdown"))
+	require.True(t, chatfiles.IsAllowedStoredMediaType("text/csv"))
+	require.True(t, chatfiles.IsAllowedStoredMediaType("application/json"))
+	require.True(t, chatfiles.IsAllowedStoredMediaType("application/pdf"))
+	require.True(t, chatfiles.IsAllowedStoredMediaType("image/png"))
+	require.False(t, chatfiles.IsAllowedStoredMediaType("image/svg+xml"))
+	require.False(t, chatfiles.IsAllowedStoredMediaType("image/avif"))
+	require.False(t, chatfiles.IsAllowedStoredMediaType("application/zip"))
+}
+
+func TestIsInlineRenderableStoredMediaType(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, chatfiles.IsInlineRenderableStoredMediaType("text/plain; charset=utf-8"))
+	require.True(t, chatfiles.IsInlineRenderableStoredMediaType("text/markdown"))
+	require.True(t, chatfiles.IsInlineRenderableStoredMediaType("image/png"))
+	require.False(t, chatfiles.IsInlineRenderableStoredMediaType("application/pdf"))
+	require.False(t, chatfiles.IsInlineRenderableStoredMediaType("image/svg+xml"))
 }
 
 func TestHasSVGRootElement(t *testing.T) {
@@ -160,4 +241,6 @@ func TestHasSVGRootElement(t *testing.T) {
 	require.True(t, chatfiles.HasSVGRootElement([]byte(`<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"></svg>`)))
 	require.True(t, chatfiles.HasSVGRootElement([]byte("\xef\xbb\xbf<svg></svg>")))
 	require.False(t, chatfiles.HasSVGRootElement([]byte("<html><body>not svg</body></html>")))
+	require.False(t, chatfiles.HasSVGRootElement([]byte("# SVG Example\n<svg width=\"100\">...</svg>")))
+	require.False(t, chatfiles.HasSVGRootElement([]byte("name,icon\nlogo,<svg><rect/></svg>\n")))
 }

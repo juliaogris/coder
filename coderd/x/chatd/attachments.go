@@ -1,10 +1,12 @@
 package chatd
 
 import (
+	"context"
+
 	"charm.land/fantasy"
 	"github.com/google/uuid"
-	"golang.org/x/xerrors"
 
+	"cdr.dev/slog/v3"
 	"github.com/coder/coder/v2/coderd/x/chatd/chatloop"
 	"github.com/coder/coder/v2/coderd/x/chatd/chatprompt"
 	"github.com/coder/coder/v2/coderd/x/chatd/chattool"
@@ -12,11 +14,13 @@ import (
 )
 
 func buildAssistantPartsForPersist(
+	ctx context.Context,
+	logger slog.Logger,
 	assistantBlocks []fantasy.Content,
 	toolResults []fantasy.ToolResultContent,
 	step chatloop.PersistedStep,
 	toolNameToConfigID map[string]uuid.UUID,
-) ([]codersdk.ChatMessagePart, error) {
+) []codersdk.ChatMessagePart {
 	parts := make([]codersdk.ChatMessagePart, 0, len(assistantBlocks)+len(toolResults))
 	for _, block := range assistantBlocks {
 		part := chatprompt.PartFromContent(block)
@@ -38,16 +42,22 @@ func buildAssistantPartsForPersist(
 		parts = append(parts, part)
 	}
 	for _, tr := range toolResults {
-		attachmentParts, err := chattool.AttachmentPartsFromMetadata(tr.ClientMetadata)
+		attachments, err := chattool.AttachmentsFromMetadata(tr.ClientMetadata)
 		if err != nil {
-			return nil, xerrors.Errorf(
-				"decode attachments for tool %q (%s): %w",
-				tr.ToolName,
-				tr.ToolCallID,
-				err,
+			logger.Warn(ctx, "skipping malformed tool attachment metadata",
+				slog.F("tool_name", tr.ToolName),
+				slog.F("tool_call_id", tr.ToolCallID),
+				slog.Error(err),
 			)
+			continue
 		}
-		parts = append(parts, attachmentParts...)
+		for _, attachment := range attachments {
+			parts = append(parts, codersdk.ChatMessageFile(
+				attachment.FileID,
+				attachment.MediaType,
+				attachment.Name,
+			))
+		}
 	}
-	return parts, nil
+	return parts
 }

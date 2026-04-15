@@ -11,18 +11,14 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/xerrors"
 
-	"github.com/coder/coder/v2/coderd/chatfiles"
-	"github.com/coder/coder/v2/codersdk"
 	"github.com/coder/coder/v2/codersdk/workspacesdk"
 )
 
-const (
-	maxAttachmentSize = 10 << 20 // 10 MiB
-	maxAttachmentName = 255
-)
+const maxAttachmentSize = 10 << 20 // 10 MiB
 
-// StoreFileFunc persists a chat attachment and returns its durable ID.
-type StoreFileFunc func(ctx context.Context, name string, mediaType string, data []byte) (uuid.UUID, error)
+// StoreFileFunc persists a chat attachment after classifying it for durable
+// storage and returns the stored attachment metadata.
+type StoreFileFunc func(ctx context.Context, name string, detectName string, data []byte) (AttachmentMetadata, error)
 
 // AttachmentMetadata identifies a durable chat attachment that should be
 // promoted into a standard file message part for the user.
@@ -53,29 +49,28 @@ func storeAttachmentData(
 		return AttachmentMetadata{}, xerrors.Errorf("attachment exceeds %d MiB size limit", maxAttachmentSize>>20)
 	}
 
-	name = truncateRunes(strings.TrimSpace(name), maxAttachmentName)
+	name = strings.TrimSpace(name)
 	if name == "" {
 		return AttachmentMetadata{}, xerrors.New("attachment name is required")
 	}
-	detectName = strings.TrimSpace(detectName)
-	if detectName == "" {
+	if strings.TrimSpace(detectName) == "" {
 		detectName = name
 	}
 
-	mediaType := chatfiles.ClassifyStoredMediaType(detectName, data)
-	if !chatfiles.IsAllowedStoredMediaType(mediaType) {
-		return AttachmentMetadata{}, xerrors.Errorf("unsupported attachment type %q", mediaType)
-	}
-
-	fileID, err := storeFile(ctx, name, mediaType, data)
+	attachment, err := storeFile(ctx, name, detectName, data)
 	if err != nil {
 		return AttachmentMetadata{}, err
 	}
-	return AttachmentMetadata{
-		FileID:    fileID,
-		MediaType: mediaType,
-		Name:      name,
-	}, nil
+	if attachment.FileID == uuid.Nil {
+		return AttachmentMetadata{}, xerrors.New("stored attachment is missing file ID")
+	}
+	if attachment.MediaType == "" {
+		return AttachmentMetadata{}, xerrors.New("stored attachment is missing media type")
+	}
+	if attachment.Name == "" {
+		attachment.Name = name
+	}
+	return attachment, nil
 }
 
 func storeWorkspaceAttachment(
@@ -97,7 +92,7 @@ func storeWorkspaceAttachment(
 	}
 	defer reader.Close()
 
-	data, err := io.ReadAll(reader)
+	data, err := io.ReadAll(io.LimitReader(reader, maxAttachmentSize+1))
 	if err != nil {
 		return AttachmentMetadata{}, 0, err
 	}
@@ -133,16 +128,6 @@ func storeScreenshotAttachment(
 		name = "screenshot.png"
 	}
 	return storeAttachmentData(ctx, storeFile, name, name, data)
-}
-
-// toolResponseWithAttachments builds a JSON tool response and couples it with
-// durable attachment metadata so file-producing tools cannot forget the
-// persistence path.
-func toolResponseWithAttachments(
-	result map[string]any,
-	attachments ...AttachmentMetadata,
-) fantasy.ToolResponse {
-	return WithAttachments(toolResponse(result), attachments...)
 }
 
 // WithAttachments stores durable attachment metadata on a tool response so the
@@ -182,35 +167,4 @@ func AttachmentsFromMetadata(metadata string) ([]AttachmentMetadata, error) {
 		attachments = append(attachments, attachment)
 	}
 	return attachments, nil
-}
-
-// AttachmentsFromMetadataLax decodes durable attachment metadata for paths that
-// intentionally prefer best-effort behavior over surfacing malformed metadata.
-func AttachmentsFromMetadataLax(metadata string) []AttachmentMetadata {
-	attachments, err := AttachmentsFromMetadata(metadata)
-	if err != nil {
-		return nil
-	}
-	return attachments
-}
-
-// AttachmentPartsFromMetadata converts response metadata into standard file
-// message parts so the chat transcript can render them like uploaded files.
-func AttachmentPartsFromMetadata(metadata string) ([]codersdk.ChatMessagePart, error) {
-	attachments, err := AttachmentsFromMetadata(metadata)
-	if err != nil {
-		return nil, err
-	}
-	if len(attachments) == 0 {
-		return nil, nil
-	}
-	parts := make([]codersdk.ChatMessagePart, 0, len(attachments))
-	for _, attachment := range attachments {
-		parts = append(parts, codersdk.ChatMessageFile(
-			attachment.FileID,
-			attachment.MediaType,
-			attachment.Name,
-		))
-	}
-	return parts, nil
 }

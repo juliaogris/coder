@@ -11,8 +11,10 @@ import (
 	"github.com/google/uuid"
 
 	"cdr.dev/slog/v3"
+	"github.com/coder/coder/v2/coderd/chatfiles"
 	"github.com/coder/coder/v2/coderd/database"
 	"github.com/coder/coder/v2/coderd/database/dbauthz"
+	"github.com/coder/coder/v2/coderd/x/chatd/chattool"
 	"github.com/coder/coder/v2/codersdk/workspacesdk"
 )
 
@@ -31,6 +33,7 @@ func (p *Server) stopAndStoreRecording(
 	ctx context.Context,
 	conn workspacesdk.AgentConn,
 	recordingID string,
+	parentChatID uuid.UUID,
 	ownerID uuid.UUID,
 	workspaceID uuid.NullUUID,
 ) recordingResult {
@@ -75,7 +78,8 @@ func (p *Server) stopAndStoreRecording(
 	// The chatd actor is used here because the recording is stored on
 	// behalf of the chat system, not a specific user request.
 	//nolint:gocritic // AsChatd is required to read the workspace for org lookup.
-	ws, err := p.db.GetWorkspaceByID(dbauthz.AsChatd(ctx), workspaceID.UUID)
+	chatdCtx := dbauthz.AsChatd(ctx)
+	ws, err := p.db.GetWorkspaceByID(chatdCtx, workspaceID.UUID)
 	if err != nil {
 		p.logger.Warn(ctx, "failed to resolve workspace for recording",
 			slog.Error(err))
@@ -165,37 +169,71 @@ func (p *Server) stopAndStoreRecording(
 
 	// Second pass: store the collected data in the database.
 	if videoData != nil {
-		//nolint:gocritic // AsChatd is required to insert chat files from the recording pipeline.
-		row, err := p.db.InsertChatFile(dbauthz.AsChatd(ctx), database.InsertChatFileParams{
-			OwnerID:        ownerID,
-			OrganizationID: ws.OrganizationID,
-			Name:           fmt.Sprintf("recording-%s.mp4", p.clock.Now().UTC().Format("2006-01-02T15-04-05Z")),
-			Mimetype:       "video/mp4",
-			Data:           videoData,
-		})
+		attachment, err := p.storeRecordingArtifact(
+			chatdCtx,
+			parentChatID,
+			ownerID,
+			ws.OrganizationID,
+			fmt.Sprintf("recording-%s.mp4", p.clock.Now().UTC().Format("2006-01-02T15-04-05Z")),
+			"video/mp4",
+			videoData,
+		)
 		if err != nil {
 			p.logger.Warn(ctx, "failed to store recording in database",
 				slog.Error(err))
 		} else {
-			result.recordingFileID = row.ID.String()
+			result.recordingFileID = attachment.FileID.String()
 		}
 	}
 	if thumbnailData != nil && result.recordingFileID != "" {
-		//nolint:gocritic // AsChatd is required to insert chat files from the recording pipeline.
-		row, err := p.db.InsertChatFile(dbauthz.AsChatd(ctx), database.InsertChatFileParams{
-			OwnerID:        ownerID,
-			OrganizationID: ws.OrganizationID,
-			Name:           fmt.Sprintf("thumbnail-%s.jpg", p.clock.Now().UTC().Format("2006-01-02T15-04-05Z")),
-			Mimetype:       "image/jpeg",
-			Data:           thumbnailData,
-		})
+		attachment, err := p.storeRecordingArtifact(
+			chatdCtx,
+			parentChatID,
+			ownerID,
+			ws.OrganizationID,
+			fmt.Sprintf("thumbnail-%s.jpg", p.clock.Now().UTC().Format("2006-01-02T15-04-05Z")),
+			"image/jpeg",
+			thumbnailData,
+		)
 		if err != nil {
 			p.logger.Warn(ctx, "failed to store thumbnail in database",
 				slog.Error(err))
 		} else {
-			result.thumbnailFileID = row.ID.String()
+			result.thumbnailFileID = attachment.FileID.String()
 		}
 	}
 
 	return result
+}
+
+func (p *Server) storeRecordingArtifact(
+	ctx context.Context,
+	chatID uuid.UUID,
+	ownerID uuid.UUID,
+	organizationID uuid.UUID,
+	name string,
+	mediaType string,
+	data []byte,
+) (chattool.AttachmentMetadata, error) {
+	name = chatfiles.NormalizeStoredFileName(name)
+
+	var attachment chattool.AttachmentMetadata
+	err := p.db.InTx(func(tx database.Store) error {
+		var err error
+		attachment, err = storeLinkedChatFileTx(
+			ctx,
+			tx,
+			chatID,
+			ownerID,
+			organizationID,
+			name,
+			mediaType,
+			data,
+		)
+		return err
+	}, database.DefaultTXOptions().WithID("store_recording_artifact"))
+	if err != nil {
+		return chattool.AttachmentMetadata{}, err
+	}
+	return attachment, nil
 }

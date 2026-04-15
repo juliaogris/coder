@@ -4,30 +4,22 @@ import (
 	"bytes"
 	"encoding/json"
 	"encoding/xml"
+	"maps"
 	"mime"
 	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/gabriel-vasile/mimetype"
+	"golang.org/x/xerrors"
 )
+
+const MaxStoredFileNameBytes = 255
 
 var (
 	utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
 	allowedStoredMediaTypes = map[string]struct{}{
-		"image/png":        {},
-		"image/jpeg":       {},
-		"image/gif":        {},
-		"image/webp":       {},
-		"text/plain":       {},
-		"text/markdown":    {},
-		"text/csv":         {},
-		"application/json": {},
-		"application/pdf":  {},
-	}
-
-	inlineSafeMediaTypes = map[string]struct{}{
 		"image/png":        {},
 		"image/jpeg":       {},
 		"image/gif":        {},
@@ -53,20 +45,10 @@ func BaseMediaType(mediaType string) string {
 	return mediaType
 }
 
-// AllowedStoredMediaTypes returns the supported durable chat file media types.
-func AllowedStoredMediaTypes() []string {
-	types := make([]string, 0, len(allowedStoredMediaTypes))
-	for mediaType := range allowedStoredMediaTypes {
-		types = append(types, mediaType)
-	}
-	slices.Sort(types)
-	return types
-}
-
 // AllowedStoredMediaTypesString returns the supported durable chat file media
 // types as a comma-separated list.
 func AllowedStoredMediaTypesString() string {
-	return strings.Join(AllowedStoredMediaTypes(), ", ")
+	return strings.Join(slices.Sorted(maps.Keys(allowedStoredMediaTypes)), ", ")
 }
 
 // IsAllowedStoredMediaType reports whether the media type is supported for
@@ -74,6 +56,39 @@ func AllowedStoredMediaTypesString() string {
 func IsAllowedStoredMediaType(mediaType string) bool {
 	_, ok := allowedStoredMediaTypes[BaseMediaType(mediaType)]
 	return ok
+}
+
+// IsInlineRenderableStoredMediaType reports whether a stored chat file may be
+// served with Content-Disposition: inline. PDFs remain storable but
+// download-only because browser PDF viewers have a broader active-content
+// attack surface than the other media types we allow inline.
+func IsInlineRenderableStoredMediaType(mediaType string) bool {
+	mediaType = BaseMediaType(mediaType)
+	if !IsAllowedStoredMediaType(mediaType) {
+		return false
+	}
+	return mediaType != "application/pdf"
+}
+
+// NormalizeStoredFileName trims surrounding whitespace and truncates the name
+// to the durable storage byte limit without splitting UTF-8 runes.
+func NormalizeStoredFileName(name string) string {
+	return truncateUTF8Bytes(strings.TrimSpace(name), MaxStoredFileNameBytes)
+}
+
+// PrepareStoredFile normalizes the display name and classifies the file bytes
+// using detectName when provided, so callers can preserve subtype detection
+// even when the user-facing filename is overridden.
+func PrepareStoredFile(name, detectName string, data []byte) (storedName, mediaType string, err error) {
+	storedName = NormalizeStoredFileName(name)
+	if strings.TrimSpace(detectName) == "" {
+		detectName = storedName
+	}
+	mediaType = ClassifyStoredMediaType(detectName, data)
+	if !IsAllowedStoredMediaType(mediaType) {
+		return "", "", xerrors.Errorf("unsupported attachment type %q", mediaType)
+	}
+	return storedName, mediaType, nil
 }
 
 // IsCompatibleUploadMediaType reports whether an upload request that declared
@@ -104,7 +119,7 @@ func IsCompatibleUploadMediaType(declaredMediaType, storedMediaType string) bool
 // root element. This catches SVG content even when generic sniffers classify it
 // as text or XML.
 func HasSVGRootElement(data []byte) bool {
-	data = bytes.TrimSpace(bytes.TrimPrefix(data, utf8BOM))
+	data = bytes.TrimPrefix(data, utf8BOM)
 	if len(data) == 0 {
 		return false
 	}
@@ -115,11 +130,20 @@ func HasSVGRootElement(data []byte) bool {
 		if err != nil {
 			return false
 		}
-		start, ok := token.(xml.StartElement)
-		if !ok {
+
+		switch token := token.(type) {
+		case xml.ProcInst, xml.Directive, xml.Comment:
 			continue
+		case xml.CharData:
+			if len(bytes.TrimSpace(token)) == 0 {
+				continue
+			}
+			return false
+		case xml.StartElement:
+			return strings.EqualFold(token.Name.Local, "svg")
+		default:
+			return false
 		}
-		return strings.EqualFold(start.Name.Local, "svg")
 	}
 }
 
@@ -161,9 +185,20 @@ func refineTextMediaType(name string, data []byte) string {
 	return "text/plain"
 }
 
-// IsInlineSafe reports whether files of the given media type should be rendered
-// inline in the browser rather than downloaded as attachments.
-func IsInlineSafe(mediaType string) bool {
-	_, ok := inlineSafeMediaTypes[BaseMediaType(mediaType)]
-	return ok
+func truncateUTF8Bytes(value string, maxBytes int) string {
+	if maxBytes <= 0 || value == "" {
+		return ""
+	}
+	if len(value) <= maxBytes {
+		return value
+	}
+
+	cut := 0
+	for idx := range value {
+		if idx > maxBytes {
+			break
+		}
+		cut = idx
+	}
+	return value[:cut]
 }

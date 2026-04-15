@@ -307,8 +307,8 @@ func TestProposePlan(t *testing.T) {
 			ReadFile(gomock.Any(), "/home/coder/PLAN.md", int64(0), int64(32*1024+1)).
 			Return(io.NopCloser(strings.NewReader("# Plan")), "text/markdown", nil)
 
-		tool := newProposePlanTool(t, mockConn, func(_ context.Context, _ string, _ string, _ []byte) (uuid.UUID, error) {
-			return uuid.Nil, xerrors.New("storage unavailable")
+		tool := newProposePlanTool(t, mockConn, func(_ context.Context, _ string, _ string, _ []byte) (chattool.AttachmentMetadata, error) {
+			return chattool.AttachmentMetadata{}, xerrors.New("storage unavailable")
 		})
 		resp, err := tool.Run(context.Background(), fantasy.ToolCall{
 			ID:    "call-1",
@@ -520,9 +520,9 @@ func TestProposePlan(t *testing.T) {
 		tool := newProposePlanToolWithPlanPath(
 			t,
 			mockConn,
-			func(ctx context.Context, name string, mediaType string, data []byte) (uuid.UUID, error) {
+			func(ctx context.Context, name string, detectName string, data []byte) (chattool.AttachmentMetadata, error) {
 				storeCalled = true
-				return storeFile(ctx, name, mediaType, data)
+				return storeFile(ctx, name, detectName, data)
 			},
 			func(context.Context) (string, string, error) {
 				return chatPlanPath, "/home/coder", nil
@@ -633,11 +633,15 @@ func fakeStoreFile(t *testing.T) (chattool.StoreFileFunc, *[]byte) {
 	t.Helper()
 
 	var stored []byte
-	return func(_ context.Context, name string, mediaType string, data []byte) (uuid.UUID, error) {
+	return func(_ context.Context, name string, detectName string, data []byte) (chattool.AttachmentMetadata, error) {
 		assert.NotEmpty(t, name)
-		assert.Equal(t, "text/markdown", mediaType)
+		assert.NotEmpty(t, detectName)
 		stored = append([]byte(nil), data...)
-		return uuid.MustParse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"), nil
+		return chattool.AttachmentMetadata{
+			FileID:    uuid.MustParse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+			MediaType: "text/markdown",
+			Name:      name,
+		}, nil
 	}, &stored
 }
 

@@ -2,6 +2,7 @@ package chattool_test
 
 import (
 	"context"
+	"encoding/base64"
 	"testing"
 
 	"charm.land/fantasy"
@@ -98,11 +99,16 @@ func TestComputerUseTool_Run_Screenshot_PersistsAttachment(t *testing.T) {
 	var storedData []byte
 	tool := chattool.NewComputerUseTool(geometry.DeclaredWidth, geometry.DeclaredHeight, func(_ context.Context) (workspacesdk.AgentConn, error) {
 		return mockConn, nil
-	}, func(_ context.Context, name string, mediaType string, data []byte) (uuid.UUID, error) {
+	}, func(_ context.Context, name string, detectName string, data []byte) (chattool.AttachmentMetadata, error) {
 		storedName = name
-		storedType = mediaType
+		require.Equal(t, name, detectName)
+		storedType = "image/png"
 		storedData = append([]byte(nil), data...)
-		return uuid.MustParse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"), nil
+		return chattool.AttachmentMetadata{
+			FileID:    uuid.MustParse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+			MediaType: storedType,
+			Name:      name,
+		}, nil
 	}, quartz.NewReal(), slogtest.Make(t, nil))
 
 	resp, err := tool.Run(context.Background(), fantasy.ToolCall{
@@ -114,7 +120,9 @@ func TestComputerUseTool_Run_Screenshot_PersistsAttachment(t *testing.T) {
 	assert.Equal(t, []byte(screenshotPNG), resp.Data)
 	assert.Contains(t, storedName, "screenshot-")
 	assert.Equal(t, "image/png", storedType)
-	require.NotEmpty(t, storedData)
+	expectedPNG, decodeErr := base64.StdEncoding.DecodeString(screenshotPNG)
+	require.NoError(t, decodeErr)
+	require.Equal(t, expectedPNG, storedData)
 
 	attachments, err := chattool.AttachmentsFromMetadata(resp.Metadata)
 	require.NoError(t, err)
@@ -143,8 +151,8 @@ func TestComputerUseTool_Run_Screenshot_StoreErrorFallsBackToImage(t *testing.T)
 
 	tool := chattool.NewComputerUseTool(geometry.DeclaredWidth, geometry.DeclaredHeight, func(_ context.Context) (workspacesdk.AgentConn, error) {
 		return mockConn, nil
-	}, func(_ context.Context, _ string, _ string, _ []byte) (uuid.UUID, error) {
-		return uuid.Nil, xerrors.New("chat already has the maximum of 20 linked files")
+	}, func(_ context.Context, _ string, _ string, _ []byte) (chattool.AttachmentMetadata, error) {
+		return chattool.AttachmentMetadata{}, xerrors.New("chat already has the maximum of 20 linked files")
 	}, quartz.NewReal(), slogtest.Make(t, nil))
 
 	resp, err := tool.Run(context.Background(), fantasy.ToolCall{
