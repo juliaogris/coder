@@ -100,6 +100,7 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 	);
 	const [confirmingDelete, setConfirmingDelete] = useState(false);
 
+	const isBedrockProvider = provider === "bedrock";
 	const isAPIKeyEnvManaged = isEnvPreset && !providerConfig;
 	const shouldShowAPIKeyField = centralAPIKeyEnabled;
 	const shouldShowFallbackToggle = centralAPIKeyEnabled && allowUserAPIKey;
@@ -109,16 +110,19 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 		initialValues.allowCentralAPIKeyFallback;
 	const effectiveFallback =
 		shouldShowFallbackToggle && allowCentralAPIKeyFallback;
-	// Require a key whenever central-key usage is enabled and there is no
-	// stored deployment key yet. This covers both create and update flows,
-	// including toggling central-key usage on for an existing provider.
+	// Most providers require a stored deployment key whenever central-key
+	// usage is enabled and there is no saved key yet. Bedrock can also use
+	// ambient AWS credentials from the Coder server, so its API key stays
+	// optional.
 	const requiresAPIKey =
 		!isAPIKeyEnvManaged &&
+		!isBedrockProvider &&
 		centralAPIKeyEnabled &&
 		!providerState.hasManagedAPIKey;
 
 	const effectiveApiKey =
 		apiKeyTouched && apiKey !== API_KEY_PLACEHOLDER ? apiKey.trim() : "";
+	const hasTypedAPIKey = effectiveApiKey.length > 0;
 	const hasCredentialSource = centralAPIKeyEnabled || allowUserAPIKey;
 	const deleteProviderDescription = normalizedProviderConfig?.allow_user_api_key
 		? "Are you sure you want to delete this provider? Any personal API " +
@@ -140,7 +144,7 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 		!isAPIKeyEnvManaged &&
 		isDirty &&
 		hasCredentialSource &&
-		(!requiresAPIKey || effectiveApiKey);
+		(!requiresAPIKey || hasTypedAPIKey);
 
 	const handleSubmit = async (event: FormEvent) => {
 		event.preventDefault();
@@ -153,7 +157,7 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 			return;
 		}
 
-		if (requiresAPIKey && !effectiveApiKey) {
+		if (requiresAPIKey && !hasTypedAPIKey) {
 			return;
 		}
 
@@ -169,7 +173,7 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 					display_name: trimmedDisplayName,
 				}),
 				...(centralAPIKeyEnabled &&
-					effectiveApiKey && { api_key: effectiveApiKey }),
+					hasTypedAPIKey && { api_key: effectiveApiKey }),
 				...(trimmedBaseURL !== currentBaseURL && {
 					base_url: trimmedBaseURL,
 				}),
@@ -198,7 +202,8 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 		} else {
 			const req: TypesGen.CreateChatProviderConfigRequest = {
 				provider,
-				...(centralAPIKeyEnabled && { api_key: effectiveApiKey }),
+				...(centralAPIKeyEnabled &&
+					hasTypedAPIKey && { api_key: effectiveApiKey }),
 				central_api_key_enabled: centralAPIKeyEnabled,
 				allow_user_api_key: allowUserAPIKey,
 				allow_central_api_key_fallback: effectiveFallback,
@@ -282,27 +287,36 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 								required={requiresAPIKey}
 								description="Secret key used to authenticate requests to this provider."
 							>
-								<Input
-									id={apiKeyInputId}
-									name="provider_api_token"
-									type="password"
-									autoComplete="off"
-									data-1p-ignore
-									data-lpignore="true"
-									data-form-type="other"
-									data-bwignore
-									style={{ WebkitTextSecurity: "disc" } as CSSProperties}
-									className="h-9 font-mono text-[13px]"
-									placeholder="sk-..."
-									required={requiresAPIKey}
-									value={apiKey}
-									onFocus={handleApiKeyFocus}
-									onChange={(event) => {
-										setApiKey(event.target.value);
-										setApiKeyTouched(true);
-									}}
-									disabled={isDisabled}
-								/>
+								<div className="space-y-1.5">
+									<Input
+										id={apiKeyInputId}
+										name="provider_api_token"
+										type="password"
+										autoComplete="off"
+										data-1p-ignore
+										data-lpignore="true"
+										data-form-type="other"
+										data-bwignore
+										style={{ WebkitTextSecurity: "disc" } as CSSProperties}
+										className="h-9 font-mono text-[13px]"
+										placeholder="sk-..."
+										required={requiresAPIKey}
+										value={apiKey}
+										onFocus={handleApiKeyFocus}
+										onChange={(event) => {
+											setApiKey(event.target.value);
+											setApiKeyTouched(true);
+										}}
+										disabled={isDisabled}
+									/>
+									{isBedrockProvider && (
+										<p className="m-0 text-xs text-content-secondary">
+											Optional. Enter a bearer token, or leave empty to use
+											ambient AWS credentials (IAM role, environment variables)
+											configured on the Coder server.
+										</p>
+									)}
+								</div>
 							</ProviderField>
 						)}
 
@@ -311,16 +325,24 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 							htmlFor={baseURLInputId}
 							description="Custom endpoint for this provider. Leave empty to use the default."
 						>
-							<Input
-								id={baseURLInputId}
-								name="provider_base_url"
-								className="h-9 text-[13px]"
-								placeholder={baseURLPlaceholder}
-								autoComplete="off"
-								value={baseURLValue}
-								onChange={(event) => setBaseURLValue(event.target.value)}
-								disabled={isDisabled}
-							/>
+							<div className="space-y-1.5">
+								<Input
+									id={baseURLInputId}
+									name="provider_base_url"
+									className="h-9 text-[13px]"
+									placeholder={baseURLPlaceholder}
+									autoComplete="off"
+									value={baseURLValue}
+									onChange={(event) => setBaseURLValue(event.target.value)}
+									disabled={isDisabled}
+								/>
+								{isBedrockProvider && (
+									<p className="m-0 text-xs text-content-secondary">
+										Overrides the Bedrock runtime endpoint. Region is resolved
+										from AWS_REGION or the Base URL.
+									</p>
+								)}
+							</div>
 						</ProviderField>
 
 						<div className="space-y-3 rounded-lg border border-solid border-border/70 bg-surface-secondary/30 p-4">

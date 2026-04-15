@@ -813,6 +813,114 @@ export const ProviderInvalidCredentialState: Story = {
 	},
 };
 
+export const ProviderFormBedrockAmbientCredentials: Story = {
+	args: {
+		section: "providers" as ChatModelAdminSection,
+		providerConfigsData: [
+			createProviderConfig({
+				id: "provider-bedrock-ambient",
+				provider: "bedrock",
+				display_name: "AWS Bedrock",
+				has_api_key: false,
+				central_api_key_enabled: true,
+				allow_user_api_key: false,
+				allow_central_api_key_fallback: false,
+			}),
+		],
+		modelCatalogData: { providers: [] },
+	},
+	play: async ({ canvasElement, args }) => {
+		const body = within(canvasElement.ownerDocument.body);
+		await userEvent.click(
+			await body.findByRole("button", { name: /AWS Bedrock/i }),
+		);
+
+		const apiKeyInput = await body.findByLabelText(/^API Key$/i);
+		const baseURLInput = body.getByLabelText("Base URL");
+		const saveButton = body.getByRole("button", { name: "Save changes" });
+
+		await expect(apiKeyInput).not.toBeRequired();
+		await expect(
+			body.findByText(
+				/Optional\. Enter a bearer token, or leave empty to\s+use ambient AWS credentials/i,
+			),
+		).resolves.toBeInTheDocument();
+		await expect(
+			body.findByText(
+				/Overrides the Bedrock runtime endpoint\.\s+Region is resolved from AWS_REGION or the Base URL\./i,
+			),
+		).resolves.toBeInTheDocument();
+		expect(saveButton).toBeDisabled();
+
+		await userEvent.type(
+			baseURLInput,
+			"https://bedrock-runtime.us-west-2.amazonaws.com",
+		);
+		await waitFor(() => {
+			expect(saveButton).toBeEnabled();
+		});
+		await userEvent.click(saveButton);
+
+		await waitFor(() => {
+			expect(args.onUpdateProvider).toHaveBeenCalledTimes(1);
+		});
+		const updateProviderMock = args.onUpdateProvider as ReturnType<typeof fn>;
+		const updateRequest = updateProviderMock.mock.calls[0][1] as Record<
+			string,
+			unknown
+		>;
+		expect(updateRequest).toMatchObject({
+			base_url: "https://bedrock-runtime.us-west-2.amazonaws.com",
+		});
+		expect(updateRequest).not.toHaveProperty("api_key");
+	},
+};
+
+export const ProviderFormBedrockBearerToken: Story = {
+	args: {
+		section: "providers" as ChatModelAdminSection,
+		providerConfigsData: [
+			createProviderConfig({
+				id: "provider-bedrock-bearer",
+				provider: "bedrock",
+				display_name: "AWS Bedrock",
+				has_api_key: true,
+				central_api_key_enabled: true,
+				allow_user_api_key: false,
+				allow_central_api_key_fallback: false,
+			}),
+		],
+		modelCatalogData: { providers: [] },
+	},
+	play: async ({ canvasElement, args }) => {
+		const body = within(canvasElement.ownerDocument.body);
+		await userEvent.click(
+			await body.findByRole("button", { name: /AWS Bedrock/i }),
+		);
+
+		const apiKeyInput = await body.findByLabelText(/^API Key$/i);
+		const saveButton = body.getByRole("button", { name: "Save changes" });
+
+		await expect(apiKeyInput).not.toBeRequired();
+		await expect(apiKeyInput).toHaveValue("••••••••••••••••");
+
+		await userEvent.click(apiKeyInput);
+		await userEvent.type(apiKeyInput, "bedrock-bearer-token");
+		await waitFor(() => {
+			expect(saveButton).toBeEnabled();
+		});
+		await userEvent.click(saveButton);
+
+		await waitFor(() => {
+			expect(args.onUpdateProvider).toHaveBeenCalledTimes(1);
+		});
+		expect(args.onUpdateProvider).toHaveBeenCalledWith(
+			"provider-bedrock-bearer",
+			expect.objectContaining({ api_key: "bedrock-bearer-token" }),
+		);
+	},
+};
+
 const openAddModelForm = async (
 	body: ReturnType<typeof within>,
 	providerLabel: string,
