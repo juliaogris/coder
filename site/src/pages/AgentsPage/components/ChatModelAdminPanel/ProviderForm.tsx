@@ -123,7 +123,21 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 	const effectiveApiKey =
 		apiKeyTouched && apiKey !== API_KEY_PLACEHOLDER ? apiKey.trim() : "";
 	const hasTypedAPIKey = effectiveApiKey.length > 0;
+	// Clearing a saved Bedrock bearer token switches the provider back
+	// to ambient AWS credentials, so updates must send an explicit
+	// empty string.
+	const isClearingBedrockAPIKey =
+		isBedrockProvider &&
+		providerState.hasManagedAPIKey &&
+		apiKeyTouched &&
+		effectiveApiKey === "";
+	const shouldSubmitAPIKey =
+		centralAPIKeyEnabled && (hasTypedAPIKey || isClearingBedrockAPIKey);
 	const hasCredentialSource = centralAPIKeyEnabled || allowUserAPIKey;
+	const apiKeyDescription = isBedrockProvider
+		? "Bearer token for Bedrock authentication. Leave empty to use ambient AWS credentials."
+		: "Secret key used to authenticate requests to this provider.";
+	const apiKeyPlaceholder = isBedrockProvider ? "Enter bearer token" : "sk-...";
 	const deleteProviderDescription = normalizedProviderConfig?.allow_user_api_key
 		? "Are you sure you want to delete this provider? Any personal API " +
 			"keys that users have saved for this provider will also be " +
@@ -132,7 +146,7 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 
 	const isDirty =
 		displayName.trim() !== initialValues.displayName ||
-		effectiveApiKey !== "" ||
+		shouldSubmitAPIKey ||
 		baseURLValue.trim() !== initialValues.baseURL.trim() ||
 		centralAPIKeyEnabled !== initialValues.centralAPIKeyEnabled ||
 		allowUserAPIKey !== initialValues.allowUserAPIKey ||
@@ -172,8 +186,7 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 				...(trimmedDisplayName !== currentDisplayName && {
 					display_name: trimmedDisplayName,
 				}),
-				...(centralAPIKeyEnabled &&
-					hasTypedAPIKey && { api_key: effectiveApiKey }),
+				...(shouldSubmitAPIKey && { api_key: effectiveApiKey }),
 				...(trimmedBaseURL !== currentBaseURL && {
 					base_url: trimmedBaseURL,
 				}),
@@ -202,8 +215,7 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 		} else {
 			const req: TypesGen.CreateChatProviderConfigRequest = {
 				provider,
-				...(centralAPIKeyEnabled &&
-					hasTypedAPIKey && { api_key: effectiveApiKey }),
+				...(shouldSubmitAPIKey && { api_key: effectiveApiKey }),
 				central_api_key_enabled: centralAPIKeyEnabled,
 				allow_user_api_key: allowUserAPIKey,
 				allow_central_api_key_fallback: effectiveFallback,
@@ -285,7 +297,7 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 								label="API Key"
 								htmlFor={apiKeyInputId}
 								required={requiresAPIKey}
-								description="Secret key used to authenticate requests to this provider."
+								description={apiKeyDescription}
 							>
 								<div className="space-y-1.5">
 									<Input
@@ -299,7 +311,7 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 										data-bwignore
 										style={{ WebkitTextSecurity: "disc" } as CSSProperties}
 										className="h-9 font-mono text-[13px]"
-										placeholder="sk-..."
+										placeholder={apiKeyPlaceholder}
 										required={requiresAPIKey}
 										value={apiKey}
 										onFocus={handleApiKeyFocus}
@@ -338,8 +350,8 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 								/>
 								{isBedrockProvider && (
 									<p className="m-0 text-xs text-content-secondary">
-										Overrides the Bedrock runtime endpoint. Region is resolved
-										from AWS_REGION or the Base URL.
+										Overrides the Bedrock runtime endpoint. Set AWS_REGION on
+										the Coder server to select the target region.
 									</p>
 								)}
 							</div>

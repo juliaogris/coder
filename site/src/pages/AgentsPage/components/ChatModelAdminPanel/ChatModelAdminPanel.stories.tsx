@@ -840,6 +840,15 @@ export const ProviderFormBedrockAmbientCredentials: Story = {
 		const saveButton = body.getByRole("button", { name: "Save changes" });
 
 		await expect(apiKeyInput).not.toBeRequired();
+		await expect(apiKeyInput).toHaveAttribute(
+			"placeholder",
+			"Enter bearer token",
+		);
+		await expect(
+			body.findByText(
+				"Bearer token for Bedrock authentication. Leave empty to use ambient AWS credentials.",
+			),
+		).resolves.toBeInTheDocument();
 		await expect(
 			body.findByText(
 				/Optional\. Enter a bearer token, or leave empty to\s+use ambient AWS credentials/i,
@@ -847,7 +856,7 @@ export const ProviderFormBedrockAmbientCredentials: Story = {
 		).resolves.toBeInTheDocument();
 		await expect(
 			body.findByText(
-				/Overrides the Bedrock runtime endpoint\.\s+Region is resolved from AWS_REGION or the Base URL\./i,
+				/Overrides the Bedrock runtime endpoint\.\s+Set AWS_REGION on\s+the Coder server to select the target region\./i,
 			),
 		).resolves.toBeInTheDocument();
 		expect(saveButton).toBeDisabled();
@@ -917,6 +926,49 @@ export const ProviderFormBedrockBearerToken: Story = {
 		expect(args.onUpdateProvider).toHaveBeenCalledWith(
 			"provider-bedrock-bearer",
 			expect.objectContaining({ api_key: "bedrock-bearer-token" }),
+		);
+	},
+};
+
+export const ProviderFormBedrockClearBearerToken: Story = {
+	args: {
+		section: "providers" as ChatModelAdminSection,
+		providerConfigsData: [
+			createProviderConfig({
+				id: "provider-bedrock-clear",
+				provider: "bedrock",
+				display_name: "AWS Bedrock",
+				has_api_key: true,
+				central_api_key_enabled: true,
+				allow_user_api_key: false,
+				allow_central_api_key_fallback: false,
+			}),
+		],
+		modelCatalogData: { providers: [] },
+	},
+	play: async ({ canvasElement, args }) => {
+		const body = within(canvasElement.ownerDocument.body);
+		await userEvent.click(
+			await body.findByRole("button", { name: /AWS Bedrock/i }),
+		);
+
+		const apiKeyInput = await body.findByLabelText(/^API Key$/i);
+		const saveButton = body.getByRole("button", { name: "Save changes" });
+
+		await expect(apiKeyInput).toHaveValue("••••••••••••••••");
+		await userEvent.click(apiKeyInput);
+		await waitFor(() => {
+			expect(apiKeyInput).toHaveValue("");
+			expect(saveButton).toBeEnabled();
+		});
+		await userEvent.click(saveButton);
+
+		await waitFor(() => {
+			expect(args.onUpdateProvider).toHaveBeenCalledTimes(1);
+		});
+		expect(args.onUpdateProvider).toHaveBeenCalledWith(
+			"provider-bedrock-clear",
+			expect.objectContaining({ api_key: "" }),
 		);
 	},
 };
