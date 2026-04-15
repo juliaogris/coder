@@ -47,6 +47,7 @@ func TestResolveUserProviderKeys(t *testing.T) {
 
 	openAIProviderID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
 	anthropicProviderID := uuid.MustParse("00000000-0000-0000-0000-000000000002")
+	bedrockProviderID := uuid.MustParse("00000000-0000-0000-0000-000000000003")
 
 	tests := []struct {
 		name             string
@@ -55,6 +56,7 @@ func TestResolveUserProviderKeys(t *testing.T) {
 		userKeys         []chatprovider.UserProviderKey
 		wantAvailability map[string]chatprovider.ProviderAvailability
 		wantKeys         map[string]string
+		wantKeyPresence  map[string]bool
 	}{
 		{
 			name:      "CentralOnlyKeyPresent",
@@ -74,6 +76,35 @@ func TestResolveUserProviderKeys(t *testing.T) {
 			},
 			wantKeys: map[string]string{
 				fantasyopenai.Name: "",
+			},
+			wantKeyPresence: map[string]bool{
+				fantasyopenai.Name: false,
+			},
+		},
+		{
+			name:      "BedrockCentralAmbientCredentialsEnabled",
+			providers: []chatprovider.ConfiguredProvider{configuredProvider(bedrockProviderID, fantasybedrock.Name, true, "", false, false)},
+			wantAvailability: map[string]chatprovider.ProviderAvailability{
+				fantasybedrock.Name: {Available: true},
+			},
+			wantKeys: map[string]string{
+				fantasybedrock.Name: "",
+			},
+			wantKeyPresence: map[string]bool{
+				fantasybedrock.Name: true,
+			},
+		},
+		{
+			name:      "BedrockCentralStoredKeyPresent",
+			providers: []chatprovider.ConfiguredProvider{configuredProvider(bedrockProviderID, fantasybedrock.Name, true, "bedrock-token", false, false)},
+			wantAvailability: map[string]chatprovider.ProviderAvailability{
+				fantasybedrock.Name: {Available: true},
+			},
+			wantKeys: map[string]string{
+				fantasybedrock.Name: "bedrock-token",
+			},
+			wantKeyPresence: map[string]bool{
+				fantasybedrock.Name: true,
 			},
 		},
 		{
@@ -179,6 +210,13 @@ func TestResolveUserProviderKeys(t *testing.T) {
 				require.True(t, ok, "expected availability for provider %q", provider)
 				require.Equal(t, wantAvailability, gotAvailability)
 				require.Equal(t, tt.wantKeys[provider], keys.APIKey(provider))
+			}
+			for provider, wantPresent := range tt.wantKeyPresence {
+				gotKey, ok := keys.ByProvider[provider]
+				require.Equal(t, wantPresent, ok, "unexpected key presence for provider %q", provider)
+				if wantPresent {
+					require.Equal(t, tt.wantKeys[provider], gotKey)
+				}
 			}
 		})
 	}

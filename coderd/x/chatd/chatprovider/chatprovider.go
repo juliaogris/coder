@@ -294,6 +294,11 @@ func ResolveUserProviderKeys(
 			} else {
 				resolved.UnavailableReason = codersdk.ChatModelProviderUnavailableReasonUserAPIKeyRequired
 			}
+		case normalizedProvider == fantasybedrock.Name && provider.CentralAPIKeyEnabled:
+			// Bedrock can use ambient AWS credentials from the Coder server
+			// when central credential mode is enabled but no explicit API
+			// key is stored.
+			resolved.Available = true
 		case provider.AllowUserAPIKey && provider.AllowCentralAPIKeyFallback && provider.CentralAPIKeyEnabled:
 			// When users can add their own key, a missing central fallback key is
 			// still something the user can remedy.
@@ -305,6 +310,9 @@ func ResolveUserProviderKeys(
 		}
 
 		setResolvedProviderAPIKey(&merged, normalizedProvider, chosenKey)
+		if normalizedProvider == fantasybedrock.Name && resolved.Available && chosenKey == "" {
+			merged.ByProvider[normalizedProvider] = ""
+		}
 		availabilityByProvider[normalizedProvider] = resolved
 	}
 
