@@ -18,6 +18,7 @@ import (
 	"charm.land/fantasy"
 	"charm.land/fantasy/providers/anthropic"
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/shopspring/decimal"
 	"github.com/sqlc-dev/pqtype"
 	"golang.org/x/sync/errgroup"
@@ -145,6 +146,7 @@ type Server struct {
 
 	usageTracker *workspacestats.UsageTracker
 	clock        quartz.Clock
+	metrics      *chatloop.Metrics
 	recordingSem chan struct{}
 
 	// Configuration
@@ -2700,6 +2702,7 @@ type Config struct {
 	WebpushDispatcher              webpush.Dispatcher
 	UsageTracker                   *workspacestats.UsageTracker
 	Clock                          quartz.Clock
+	PrometheusRegistry             prometheus.Registerer
 }
 
 // New creates a new chat processor. The processor polls for pending
@@ -2767,6 +2770,11 @@ func New(cfg Config) *Server {
 		recordingSem:                   make(chan struct{}, maxConcurrentRecordingUploads),
 		wakeCh:                         make(chan struct{}, 1),
 		heartbeatRegistry:              make(map[uuid.UUID]*heartbeatEntry),
+	}
+	if cfg.PrometheusRegistry != nil {
+		p.metrics = chatloop.NewMetrics(cfg.PrometheusRegistry)
+	} else {
+		p.metrics = chatloop.NopMetrics()
 	}
 	//nolint:gocritic // The chat processor uses a scoped chatd context.
 	ctx = dbauthz.AsChatd(ctx)
@@ -4027,7 +4035,7 @@ func (p *Server) trackWorkspaceUsage(
 		// approx. 333 CTE queries/second. A cheap fix for this could
 		// be to heartbeat every Nth query. Leaving as potential future
 		// low-hanging fruit if needed.
-		workspacestats.ActivityBumpWorkspace(ctx, logger.Named("activity_bump"), p.db, wsID.UUID, time.Time{})
+		workspacestats.ActivityBumpWorkspace(ctx, logger.Named("activity_bump"), p.db, wsID.UUID, time.Time{}, workspacestats.ActivityBumpReasonChatHeartbeat)
 	}
 	return wsID
 }
@@ -4035,6 +4043,9 @@ func (p *Server) trackWorkspaceUsage(
 func (p *Server) processChat(ctx context.Context, chat database.Chat) {
 	logger := p.logger.With(slog.F("chat_id", chat.ID))
 	logger.Info(ctx, "processing chat request")
+
+	p.metrics.Chats.WithLabelValues(chatloop.StateWaiting).Inc()
+	defer p.metrics.Chats.WithLabelValues(chatloop.StateWaiting).Dec()
 
 	chatCtx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
@@ -4246,6 +4257,12 @@ func (p *Server) processChat(ctx context.Context, chat database.Chat) {
 		}
 	}()
 
+	p.metrics.Chats.WithLabelValues(chatloop.StateWaiting).Dec()
+	p.metrics.Chats.WithLabelValues(chatloop.StateStreaming).Inc()
+	defer func() {
+		p.metrics.Chats.WithLabelValues(chatloop.StateStreaming).Dec()
+		p.metrics.Chats.WithLabelValues(chatloop.StateWaiting).Inc()
+	}()
 	runResult, err := p.runChat(chatCtx, chat, generatedTitle, logger)
 	if err != nil {
 		if errors.Is(err, chatloop.ErrInterrupted) || errors.Is(context.Cause(chatCtx), chatloop.ErrInterrupted) {
@@ -4713,8 +4730,10 @@ func (p *Server) runChat(
 		}
 	}
 
+	var instructionInjected bool
 	if instruction != "" {
 		prompt = chatprompt.InsertSystem(prompt, instruction)
+		instructionInjected = true
 	}
 	prompt = renderPlanPathPrompt(prompt, resolvePlanPathBlock(ctx))
 	if skillIndex := chattool.FormatSkillIndex(skills); skillIndex != "" {
@@ -5060,6 +5079,33 @@ func (p *Server) runChat(
 			// start streaming build logs before the tool
 			// completes.
 			p.publishChatPubsubEvent(updatedChat, codersdk.ChatWatchEventKindStatusChange, nil)
+
+			// When a workspace is first attached mid-turn
+			// (e.g. via create_workspace), fetch and persist
+			// instruction files immediately so the LLM has
+			// AGENTS.md context for the remainder of this
+			// turn. The persisted marker prevents redundant
+			// fetches on subsequent turns.
+			if instruction == "" && updatedChat.WorkspaceID.Valid {
+				newInstruction, discoveredSkills, persistErr := p.persistInstructionFiles(
+					ctx,
+					updatedChat,
+					modelConfig.ID,
+					workspaceCtx.getWorkspaceAgent,
+					workspaceCtx.getWorkspaceConn,
+				)
+				if persistErr != nil {
+					p.logger.Warn(ctx, "failed to persist instruction files on workspace attach",
+						slog.F("chat_id", updatedChat.ID),
+						slog.Error(persistErr),
+					)
+				} else {
+					instruction = newInstruction
+					if len(discoveredSkills) > 0 {
+						skills = discoveredSkills
+					}
+				}
+			}
 		}
 		tools = append(tools,
 			chattool.ListTemplates(chat.OrganizationID, p.db, chattool.ListTemplatesOptions{
@@ -5165,12 +5211,18 @@ func (p *Server) runChat(
 		)
 	}
 
+	// Record builtin tool names before appending MCP tools
+	// so the metrics layer can bound label cardinality.
+	builtinToolNames := make(map[string]bool, len(tools))
+	for _, t := range tools {
+		builtinToolNames[t.Info().Name] = true
+	}
+
 	// Append tools from external MCP servers. These appear
 	// after the built-in tools so the LLM sees them as
 	// additional capabilities.
 	tools = append(tools, mcpTools...)
 	tools = append(tools, workspaceMCPTools...)
-
 	// Append dynamic tools declared by the client at chat
 	// creation time. These appear in the LLM's tool list but
 	// are never executed by the chatloop — the client handles
@@ -5251,6 +5303,8 @@ func (p *Server) runChat(
 		Model:    model,
 		Messages: prompt,
 		Tools:    tools, MaxSteps: maxChatSteps,
+		Metrics:          p.metrics,
+		BuiltinToolNames: builtinToolNames,
 
 		ModelConfig:     callConfig,
 		ProviderOptions: providerOptions,
@@ -5286,11 +5340,27 @@ func (p *Server) runChat(
 			if chat.ParentChatID.Valid {
 				reloadedPrompt = chatprompt.InsertSystem(reloadedPrompt, defaultSubagentInstruction)
 			}
-			if instruction != "" {
-				reloadedPrompt = chatprompt.InsertSystem(reloadedPrompt, instruction)
+			// Re-derive instruction and skills from the reloaded
+			// messages so that any context added during the
+			// chatloop (e.g. via persistInstructionFiles when
+			// the agent changes) is picked up after compaction.
+			// The captured instruction takes priority; fall
+			// back to persisted DB content otherwise.
+			reloadedInstruction := instruction
+			if reloadedInstruction == "" {
+				reloadedInstruction = instructionFromContextFiles(reloadedMsgs)
+			}
+			if reloadedInstruction != "" {
+				reloadedPrompt = chatprompt.InsertSystem(reloadedPrompt, reloadedInstruction)
+				instructionInjected = true
 			}
 			reloadedPrompt = renderPlanPathPrompt(reloadedPrompt, resolvePlanPathBlock(reloadCtx))
-			if skillIndex := chattool.FormatSkillIndex(skills); skillIndex != "" {
+			reloadedSkills := skillsFromParts(reloadedMsgs)
+			if len(reloadedSkills) == 0 {
+				reloadedSkills = skills
+			}
+
+			if skillIndex := chattool.FormatSkillIndex(reloadedSkills); skillIndex != "" {
 				reloadedPrompt = chatprompt.InsertSystem(reloadedPrompt, skillIndex)
 			}
 			reloadUserPrompt := p.resolveUserPrompt(reloadCtx, chat.OwnerID)
@@ -5308,7 +5378,17 @@ func (p *Server) runChat(
 		DisableChainMode: func() {
 			chainModeActive = false
 		},
-
+		PrepareMessages: func(msgs []fantasy.Message) []fantasy.Message {
+			if instructionInjected || instruction == "" {
+				return nil
+			}
+			instructionInjected = true
+			result := chatprompt.InsertSystem(msgs, instruction)
+			if skillIndex := chattool.FormatSkillIndex(skills); skillIndex != "" {
+				result = chatprompt.InsertSystem(result, skillIndex)
+			}
+			return result
+		},
 		OnRetry: func(
 			attempt int,
 			retryErr error,
@@ -5701,39 +5781,37 @@ func contextFileAgentID(messages []database.ChatMessage) (uuid.UUID, bool) {
 	return lastID, found
 }
 
-// persistInstructionFiles reads instruction files and discovers
-// skills from the workspace agent, persisting both as message
-// parts. This is called once when a workspace is first attached
-// to a chat (or when the agent changes). Returns the formatted
-// instruction string and skill index for injection into the
-// current turn's prompt.
-func (p *Server) persistInstructionFiles(
+// fetchWorkspaceContext retrieves fresh instruction files and
+// skills from the workspace agent without persisting. It handles
+// agent connection, context configuration fetching, content
+// sanitization, and metadata stamping. Returns the workspace
+// agent, the stamped parts, discovered skills, and whether the
+// workspace connection succeeded. A nil agent means the chat has
+// no valid workspace or the agent lookup failed;
+// workspaceConnOK is false in that case.
+func (p *Server) fetchWorkspaceContext(
 	ctx context.Context,
 	chat database.Chat,
-	modelConfigID uuid.UUID,
 	getWorkspaceAgent func(context.Context) (database.WorkspaceAgent, error),
 	getWorkspaceConn func(context.Context) (workspacesdk.AgentConn, error),
-) (instruction string, skills []chattool.SkillMeta, err error) {
+) (agent *database.WorkspaceAgent, agentParts []codersdk.ChatMessagePart, discoveredSkills []chattool.SkillMeta, workspaceConnOK bool) {
 	if !chat.WorkspaceID.Valid || getWorkspaceAgent == nil {
-		return "", nil, nil
+		return nil, nil, nil, false
 	}
 
-	agent, err := getWorkspaceAgent(ctx)
-	if err != nil {
-		return "", nil, nil
+	loadedAgent, agentErr := getWorkspaceAgent(ctx)
+	if agentErr != nil {
+		return nil, nil, nil, false
 	}
 
-	directory := agent.ExpandedDirectory
+	directory := loadedAgent.ExpandedDirectory
 	if directory == "" {
-		directory = agent.Directory
+		directory = loadedAgent.Directory
 	}
 
 	// Fetch context configuration from the agent. Parts
 	// arrive pre-populated with context-file and skill entries
 	// so we don't need additional round-trips.
-	var workspaceConnOK bool
-	var agentParts []codersdk.ChatMessagePart
-
 	if getWorkspaceConn != nil {
 		instructionCtx, cancel := context.WithTimeout(ctx, p.instructionLookupTimeout)
 		defer cancel()
@@ -5764,21 +5842,15 @@ func (p *Server) persistInstructionFiles(
 	// Stamp server-side fields and sanitize content. The
 	// agent cannot know its own UUID, OS metadata, or
 	// directory — those are added here at the trust boundary.
-	var discoveredSkills []chattool.SkillMeta
-	var hasContent, hasContextFilePart bool
-	agentID := uuid.NullUUID{UUID: agent.ID, Valid: true}
+	agentID := uuid.NullUUID{UUID: loadedAgent.ID, Valid: true}
 
 	for i := range agentParts {
 		agentParts[i].ContextFileAgentID = agentID
 		switch agentParts[i].Type {
 		case codersdk.ChatMessagePartTypeContextFile:
-			hasContextFilePart = true
 			agentParts[i].ContextFileContent = SanitizePromptText(agentParts[i].ContextFileContent)
-			agentParts[i].ContextFileOS = agent.OperatingSystem
+			agentParts[i].ContextFileOS = loadedAgent.OperatingSystem
 			agentParts[i].ContextFileDirectory = directory
-			if agentParts[i].ContextFileContent != "" {
-				hasContent = true
-			}
 		case codersdk.ChatMessagePartTypeSkill:
 			discoveredSkills = append(discoveredSkills, chattool.SkillMeta{
 				Name:        agentParts[i].SkillName,
@@ -5787,6 +5859,49 @@ func (p *Server) persistInstructionFiles(
 				MetaFile:    agentParts[i].ContextFileSkillMetaFile,
 			})
 		}
+	}
+
+	return &loadedAgent, agentParts, discoveredSkills, workspaceConnOK
+}
+
+// persistInstructionFiles fetches AGENTS.md instruction files and
+// skills from the workspace agent, persisting both as message
+// parts. This is called once when a workspace is first attached
+// to a chat (or when the agent changes). Returns the formatted
+// instruction string and skill index for injection into the
+// current turn's prompt.
+func (p *Server) persistInstructionFiles(
+	ctx context.Context,
+	chat database.Chat,
+	modelConfigID uuid.UUID,
+	getWorkspaceAgent func(context.Context) (database.WorkspaceAgent, error),
+	getWorkspaceConn func(context.Context) (workspacesdk.AgentConn, error),
+) (instruction string, skills []chattool.SkillMeta, err error) {
+	agent, agentParts, discoveredSkills, workspaceConnOK := p.fetchWorkspaceContext(
+		ctx, chat, getWorkspaceAgent, getWorkspaceConn,
+	)
+	// Defensive guard: fetchWorkspaceContext returns nil when the
+	// chat has no valid workspace or the agent lookup fails. It's
+	// cheaper to guard here than push the precondition up to all
+	// callers.
+	if agent == nil {
+		return "", nil, nil
+	}
+
+	agentID := uuid.NullUUID{UUID: agent.ID, Valid: true}
+	hasContent := false
+	hasContextFilePart := false
+	for _, part := range agentParts {
+		if part.Type == codersdk.ChatMessagePartTypeContextFile {
+			hasContextFilePart = true
+			if part.ContextFileContent != "" {
+				hasContent = true
+			}
+		}
+	}
+	directory := agent.ExpandedDirectory
+	if directory == "" {
+		directory = agent.Directory
 	}
 
 	if !hasContent {
