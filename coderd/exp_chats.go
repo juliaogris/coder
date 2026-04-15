@@ -4368,6 +4368,7 @@ func (api *API) createChatProvider(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := validateChatProviderCentralAPIKey(
+		provider,
 		centralAPIKeyEnabled,
 		api.hasEffectiveCentralProviderAPIKey(ctx, database.ChatProvider{
 			Provider:             provider,
@@ -4529,6 +4530,7 @@ func (api *API) updateChatProvider(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := validateChatProviderCentralAPIKey(
+		existing.Provider,
 		centralAPIKeyEnabled,
 		api.hasEffectiveCentralProviderAPIKey(ctx, database.ChatProvider{
 			ID:                   existing.ID,
@@ -5549,15 +5551,21 @@ func validateChatProviderCredentialPolicy(
 
 //nolint:revive // This helper validates central-key requirements.
 func validateChatProviderCentralAPIKey(
+	provider string,
 	centralEnabled bool,
 	hasCentralAPIKey bool,
 ) error {
-	if centralEnabled && !hasCentralAPIKey {
-		return xerrors.New(
-			"API key is required when central API key is enabled.",
-		)
+	if !centralEnabled || hasCentralAPIKey {
+		return nil
 	}
-	return nil
+	if normalizeChatProvider(provider) == "bedrock" {
+		return nil
+	}
+	return xerrors.New(
+		"An explicit API key configuration is required when central API key " +
+			"is enabled for non-Bedrock providers. Bedrock can use ambient " +
+			"AWS credentials instead.",
+	)
 }
 
 // ChatProviderAPIKeysFromDeploymentValues returns deployment-backed chat
