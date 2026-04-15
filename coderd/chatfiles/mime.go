@@ -30,6 +30,11 @@ var (
 		"application/json": {},
 		"application/pdf":  {},
 	}
+
+	recordingArtifactMediaTypes = map[string]struct{}{
+		"video/mp4":  {},
+		"image/jpeg": {},
+	}
 )
 
 // DetectMediaType detects the base media type of the given file contents.
@@ -87,6 +92,22 @@ func PrepareStoredFile(name, detectName string, data []byte) (storedName, mediaT
 	mediaType = ClassifyStoredMediaType(detectName, data)
 	if !IsAllowedStoredMediaType(mediaType) {
 		return "", "", xerrors.Errorf("unsupported attachment type %q", mediaType)
+	}
+	return storedName, mediaType, nil
+}
+
+// PrepareRecordingArtifact normalizes the recording artifact name and verifies
+// that the bytes match the expected recording media type.
+func PrepareRecordingArtifact(name, expectedMediaType string, data []byte) (storedName, mediaType string, err error) {
+	expectedMediaType = BaseMediaType(expectedMediaType)
+	if _, ok := recordingArtifactMediaTypes[expectedMediaType]; !ok {
+		return "", "", xerrors.Errorf("unsupported recording artifact type %q", expectedMediaType)
+	}
+
+	storedName = NormalizeStoredFileName(name)
+	mediaType = DetectMediaType(data)
+	if mediaType != expectedMediaType {
+		return "", "", xerrors.Errorf("recording artifact type mismatch: expected %q, detected %q", expectedMediaType, mediaType)
 	}
 	return storedName, mediaType, nil
 }

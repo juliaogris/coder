@@ -62,6 +62,22 @@ func buildMultipartResponse(parts ...partSpec) workspacesdk.StopDesktopRecording
 	}
 }
 
+func validRecordingMP4(extra int, fill byte) []byte {
+	data := []byte{0x00, 0x00, 0x00, 0x18, 'f', 't', 'y', 'p', 'm', 'p', '4', '2', 0x00, 0x00, 0x00, 0x00, 'm', 'p', '4', '1', 'i', 's', 'o', 'm'}
+	if extra <= 0 {
+		return data
+	}
+	return append(data, bytes.Repeat([]byte{fill}, extra)...)
+}
+
+func validRecordingJPEG(extra int, fill byte) []byte {
+	data := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00}
+	if extra <= 0 {
+		return data
+	}
+	return append(data, bytes.Repeat([]byte{fill}, extra)...)
+}
+
 // createComputerUseParentChild creates a parent chat and a
 // computer_use child chat bound to the given workspace/agent.
 // Both chats are inserted directly via DB to avoid triggering
@@ -191,7 +207,7 @@ func TestWaitAgentComputerUseRecording(t *testing.T) {
 	setChatStatus(ctx, t, db, child.ID, database.ChatStatusWaiting, "")
 
 	// Set up mock expectations for start and stop.
-	fakeMp4 := []byte("fake-mp4-data-for-recording-test")
+	fakeMp4 := validRecordingMP4(32, 0xA1)
 
 	mockConn.EXPECT().
 		StartDesktopRecording(gomock.Any(), gomock.Any()).
@@ -272,8 +288,8 @@ func TestWaitAgentComputerUseRecordingWithThumbnail(t *testing.T) {
 
 	setChatStatus(ctx, t, db, child.ID, database.ChatStatusWaiting, "")
 
-	fakeMp4 := []byte("fake-mp4-data-with-thumbnail-test")
-	fakeThumb := []byte("fake-jpeg-thumbnail-data")
+	fakeMp4 := validRecordingMP4(48, 0xA2)
+	fakeThumb := validRecordingJPEG(32, 0xB1)
 
 	mockConn.EXPECT().
 		StartDesktopRecording(gomock.Any(), gomock.Any()).
@@ -645,7 +661,7 @@ func TestStopAndStoreRecording_OversizedThumbnail(t *testing.T) {
 	server := newInternalTestServer(t, db, ps, chatprovider.ProviderAPIKeys{})
 	parent, _ := createParentChildChats(ctx, t, server, user, org, model)
 
-	videoData := bytes.Repeat([]byte{0xAA}, 1024)
+	videoData := validRecordingMP4(1024, 0xAA)
 
 	// Build a streaming multipart response with a normal video part
 	// and an oversized thumbnail part.
@@ -709,8 +725,8 @@ func TestStopAndStoreRecording_DuplicatePartsIgnored(t *testing.T) {
 	server := newInternalTestServer(t, db, ps, chatprovider.ProviderAPIKeys{})
 	parent, _ := createParentChildChats(ctx, t, server, user, org, model)
 
-	firstVideo := bytes.Repeat([]byte{0x01}, 512)
-	secondVideo := bytes.Repeat([]byte{0x02}, 512)
+	firstVideo := validRecordingMP4(512, 0x01)
+	secondVideo := validRecordingMP4(512, 0x02)
 
 	mockConn.EXPECT().
 		StopDesktopRecording(gomock.Any(), gomock.Any()).
@@ -799,7 +815,7 @@ func TestStopAndStoreRecording_LinkFailureRollsBackInsert(t *testing.T) {
 	var beforeCount int
 	require.NoError(t, sqlDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM chat_files").Scan(&beforeCount))
 
-	videoData := bytes.Repeat([]byte{0xDE, 0xAD}, 512)
+	videoData := validRecordingMP4(1000, 0xDE)
 	mockConn.EXPECT().
 		StopDesktopRecording(gomock.Any(), gomock.Any()).
 		Return(buildMultipartResponse(partSpec{"video/mp4", videoData}), nil).
@@ -837,8 +853,8 @@ func TestStopAndStoreRecording_WithThumbnail(t *testing.T) {
 	server := newInternalTestServer(t, db, ps, chatprovider.ProviderAPIKeys{})
 	parent, _ := createParentChildChats(ctx, t, server, user, org, model)
 
-	videoData := bytes.Repeat([]byte{0xDE, 0xAD}, 512) // 1024 bytes
-	thumbData := bytes.Repeat([]byte{0xFF, 0xD8}, 256) // 512 bytes
+	videoData := validRecordingMP4(1000, 0xDE)
+	thumbData := validRecordingJPEG(492, 0xD8)
 
 	mockConn.EXPECT().
 		StopDesktopRecording(gomock.Any(), gomock.Any()).
@@ -891,7 +907,7 @@ func TestStopAndStoreRecording_VideoOnly(t *testing.T) {
 	server := newInternalTestServer(t, db, ps, chatprovider.ProviderAPIKeys{})
 	parent, _ := createParentChildChats(ctx, t, server, user, org, model)
 
-	videoData := make([]byte, 1024)
+	videoData := validRecordingMP4(1000, 0xCC)
 
 	mockConn.EXPECT().
 		StopDesktopRecording(gomock.Any(), gomock.Any()).
@@ -914,6 +930,42 @@ func TestStopAndStoreRecording_VideoOnly(t *testing.T) {
 
 	// No thumbnail.
 	assert.Empty(t, result.thumbnailFileID, "ThumbnailFileID should be empty when no thumbnail part is present")
+}
+
+// TestStopAndStoreRecording_MismatchedVideoBytesSkipped verifies that a
+// part labeled video/mp4 is skipped when its bytes do not sniff as MP4.
+func TestStopAndStoreRecording_MismatchedVideoBytesSkipped(t *testing.T) {
+	t.Parallel()
+
+	db, ps := dbtestutil.NewDB(t)
+	ctx := chatdTestContext(t)
+
+	ctrl := gomock.NewController(t)
+	mockConn := agentconnmock.NewMockAgentConn(ctrl)
+
+	user, org, model := seedInternalChatDeps(ctx, t, db)
+	workspace, _, _ := seedWorkspaceBinding(t, db, user.ID)
+
+	server := newInternalTestServer(t, db, ps, chatprovider.ProviderAPIKeys{})
+	parent, _ := createParentChildChats(ctx, t, server, user, org, model)
+
+	mockConn.EXPECT().
+		StopDesktopRecording(gomock.Any(), gomock.Any()).
+		Return(buildMultipartResponse(partSpec{"video/mp4", validRecordingJPEG(32, 0x44)}), nil).
+		Times(1)
+
+	recordingID := uuid.New().String()
+	result := server.stopAndStoreRecording(
+		ctx, mockConn, recordingID, parent.ID, user.ID,
+		uuid.NullUUID{UUID: workspace.ID, Valid: true},
+	)
+
+	assert.Empty(t, result.recordingFileID)
+	assert.Empty(t, result.thumbnailFileID)
+
+	parentFiles, err := db.GetChatFileMetadataByChatID(ctx, parent.ID)
+	require.NoError(t, err)
+	assert.Empty(t, parentFiles)
 }
 
 // TestStopAndStoreRecording_DownloadFailure verifies that when
@@ -967,8 +1019,8 @@ func TestStopAndStoreRecording_UnknownPartIgnored(t *testing.T) {
 	server := newInternalTestServer(t, db, ps, chatprovider.ProviderAPIKeys{})
 	parent, _ := createParentChildChats(ctx, t, server, user, org, model)
 
-	videoData := make([]byte, 1024)
-	thumbData := make([]byte, 512)
+	videoData := validRecordingMP4(1000, 0x11)
+	thumbData := validRecordingJPEG(492, 0x22)
 	unknownData := make([]byte, 256)
 
 	mockConn.EXPECT().

@@ -215,10 +215,13 @@ func (p *Server) storeRecordingArtifact(
 	mediaType string,
 	data []byte,
 ) (chattool.AttachmentMetadata, error) {
-	name = chatfiles.NormalizeStoredFileName(name)
+	storedName, verifiedMediaType, err := chatfiles.PrepareRecordingArtifact(name, mediaType, data)
+	if err != nil {
+		return chattool.AttachmentMetadata{}, err
+	}
 
 	var attachment chattool.AttachmentMetadata
-	err := p.db.InTx(func(tx database.Store) error {
+	err = p.db.InTx(func(tx database.Store) error {
 		var err error
 		attachment, err = storeLinkedChatFileTx(
 			ctx,
@@ -226,8 +229,8 @@ func (p *Server) storeRecordingArtifact(
 			chatID,
 			ownerID,
 			organizationID,
-			name,
-			mediaType,
+			storedName,
+			verifiedMediaType,
 			data,
 		)
 		return err

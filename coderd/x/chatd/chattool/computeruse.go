@@ -194,26 +194,26 @@ func (t *computerUseTool) captureSharedScreenshot(
 		), nil
 	}
 
-	response := fantasy.NewImageResponse([]byte(screenResp.ScreenshotData), "image/png")
 	attachmentName := fmt.Sprintf(
 		"screenshot-%s.png",
 		t.clock.Now().UTC().Format("2006-01-02T15-04-05Z"),
 	)
 	if t.storeFile == nil {
 		t.logger.Warn(ctx, "screenshot attachment storage is not configured")
-		return response, nil
+		return fantasy.NewImageResponse([]byte(screenResp.ScreenshotData), "image/png"), nil
 	}
 
-	attachment, storeErr := storeScreenshotAttachment(
+	attachment, err := storeScreenshotAttachment(
 		ctx,
 		t.storeFile,
 		attachmentName,
 		screenResp.ScreenshotData,
 	)
-	if storeErr != nil {
+	response := fantasy.NewImageResponse([]byte(screenResp.ScreenshotData), "image/png")
+	if err != nil {
 		t.logger.Warn(ctx, "failed to persist screenshot attachment",
 			slog.F("attachment_name", attachmentName),
-			slog.Error(storeErr),
+			slog.Error(err),
 		)
 		return response, nil
 	}

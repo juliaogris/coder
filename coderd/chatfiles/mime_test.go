@@ -156,6 +156,58 @@ func TestPrepareStoredFile(t *testing.T) {
 	})
 }
 
+func TestPrepareRecordingArtifact(t *testing.T) {
+	t.Parallel()
+
+	t.Run("MP4", func(t *testing.T) {
+		t.Parallel()
+
+		name, mediaType, err := chatfiles.PrepareRecordingArtifact(
+			"recording.mp4",
+			"video/mp4",
+			[]byte{0x00, 0x00, 0x00, 0x18, 'f', 't', 'y', 'p', 'm', 'p', '4', '2', 0x00, 0x00, 0x00, 0x00, 'm', 'p', '4', '1', 'i', 's', 'o', 'm'},
+		)
+		require.NoError(t, err)
+		require.Equal(t, "recording.mp4", name)
+		require.Equal(t, "video/mp4", mediaType)
+	})
+
+	t.Run("JPEG", func(t *testing.T) {
+		t.Parallel()
+
+		name, mediaType, err := chatfiles.PrepareRecordingArtifact(
+			"thumbnail.jpg",
+			"image/jpeg",
+			[]byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00},
+		)
+		require.NoError(t, err)
+		require.Equal(t, "thumbnail.jpg", name)
+		require.Equal(t, "image/jpeg", mediaType)
+	})
+
+	t.Run("TypeMismatch", func(t *testing.T) {
+		t.Parallel()
+
+		_, _, err := chatfiles.PrepareRecordingArtifact(
+			"recording.mp4",
+			"video/mp4",
+			[]byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00},
+		)
+		require.ErrorContains(t, err, "recording artifact type mismatch")
+	})
+
+	t.Run("UnsupportedExpectedType", func(t *testing.T) {
+		t.Parallel()
+
+		_, _, err := chatfiles.PrepareRecordingArtifact(
+			"recording.webm",
+			"video/webm",
+			[]byte("webm"),
+		)
+		require.ErrorContains(t, err, "unsupported recording artifact type")
+	})
+}
+
 func TestIsCompatibleUploadMediaType(t *testing.T) {
 	t.Parallel()
 

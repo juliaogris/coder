@@ -120,7 +120,8 @@ func storeScreenshotAttachment(
 	if strings.TrimSpace(encodedPNG) == "" {
 		return AttachmentMetadata{}, xerrors.New("screenshot data is empty")
 	}
-	data, err := base64.StdEncoding.DecodeString(encodedPNG)
+	decoder := base64.NewDecoder(base64.StdEncoding, strings.NewReader(encodedPNG))
+	data, err := io.ReadAll(io.LimitReader(decoder, maxAttachmentSize+1))
 	if err != nil {
 		return AttachmentMetadata{}, xerrors.Errorf("decode screenshot: %w", err)
 	}

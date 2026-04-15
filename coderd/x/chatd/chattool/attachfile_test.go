@@ -186,6 +186,29 @@ func TestAttachFile(t *testing.T) {
 		assert.Equal(t, len(content), decoded.Size)
 	})
 
+	t.Run("EmptyFileRejected", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		mockConn := agentconnmock.NewMockAgentConn(ctrl)
+		mockConn.EXPECT().
+			ReadFile(gomock.Any(), "/home/coder/empty.txt", int64(0), int64(10<<20+1)).
+			Return(io.NopCloser(strings.NewReader("")), "text/plain", nil)
+
+		tool := newAttachFileTool(t, mockConn, func(_ context.Context, _ string, _ string, _ []byte) (chattool.AttachmentMetadata, error) {
+			t.Fatal("storeFile should not be called for empty attachments")
+			return chattool.AttachmentMetadata{}, nil
+		})
+		resp, err := tool.Run(context.Background(), fantasy.ToolCall{
+			ID: "call-empty", Name: "attach_file", Input: `{"path":"/home/coder/empty.txt"}`,
+		})
+		require.NoError(t, err)
+		assert.True(t, resp.IsError)
+		assert.Contains(t, resp.Content, "attachment is empty")
+		attachments, err := chattool.AttachmentsFromMetadata(resp.Metadata)
+		require.NoError(t, err)
+		assert.Empty(t, attachments)
+	})
+
 	t.Run("OversizedFileRejected", func(t *testing.T) {
 		t.Parallel()
 		ctrl := gomock.NewController(t)

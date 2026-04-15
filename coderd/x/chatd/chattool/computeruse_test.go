@@ -1,6 +1,7 @@
 package chattool_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"testing"
@@ -167,12 +168,51 @@ func TestComputerUseTool_Run_Screenshot_StoreErrorFallsBackToImage(t *testing.T)
 	assert.Empty(t, attachments)
 }
 
+func TestComputerUseTool_Run_Screenshot_OversizedAttachmentFallsBackToImage(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	mockConn := agentconnmock.NewMockAgentConn(ctrl)
+	geometry := workspacesdk.DefaultDesktopGeometry()
+	oversizedScreenshot := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0xAB}, 10<<20+1))
+
+	mockConn.EXPECT().ExecuteDesktopAction(
+		gomock.Any(),
+		gomock.AssignableToTypeOf(workspacesdk.DesktopAction{}),
+	).Return(workspacesdk.DesktopActionResponse{
+		Output:           "screenshot",
+		ScreenshotData:   oversizedScreenshot,
+		ScreenshotWidth:  geometry.DeclaredWidth,
+		ScreenshotHeight: geometry.DeclaredHeight,
+	}, nil)
+
+	tool := chattool.NewComputerUseTool(geometry.DeclaredWidth, geometry.DeclaredHeight, func(_ context.Context) (workspacesdk.AgentConn, error) {
+		return mockConn, nil
+	}, func(_ context.Context, _ string, _ string, _ []byte) (chattool.AttachmentMetadata, error) {
+		t.Fatal("storeFile should not be called for oversized screenshots")
+		return chattool.AttachmentMetadata{}, nil
+	}, quartz.NewReal(), slogtest.Make(t, nil))
+
+	resp, err := tool.Run(context.Background(), fantasy.ToolCall{
+		ID: "test-screenshot-oversized", Name: "computer", Input: `{"action":"screenshot"}`,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "image", resp.Type)
+	assert.Equal(t, "image/png", resp.MediaType)
+	assert.False(t, resp.IsError)
+	require.Len(t, resp.Data, len(oversizedScreenshot))
+	attachments, err := chattool.AttachmentsFromMetadata(resp.Metadata)
+	require.NoError(t, err)
+	assert.Empty(t, attachments)
+}
+
 func TestComputerUseTool_Run_LeftClick(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
 	mockConn := agentconnmock.NewMockAgentConn(ctrl)
 	geometry := workspacesdk.DefaultDesktopGeometry()
+	followUpScreenshot := base64.StdEncoding.EncodeToString([]byte("after-click"))
 
 	mockConn.EXPECT().ExecuteDesktopAction(
 		gomock.Any(),
@@ -198,7 +238,7 @@ func TestComputerUseTool_Run_LeftClick(t *testing.T) {
 		assert.Equal(t, geometry.DeclaredHeight, *action.ScaledHeight)
 		return workspacesdk.DesktopActionResponse{
 			Output:           "screenshot",
-			ScreenshotData:   "after-click",
+			ScreenshotData:   followUpScreenshot,
 			ScreenshotWidth:  geometry.DeclaredWidth,
 			ScreenshotHeight: geometry.DeclaredHeight,
 		}, nil
@@ -206,7 +246,10 @@ func TestComputerUseTool_Run_LeftClick(t *testing.T) {
 
 	tool := chattool.NewComputerUseTool(geometry.DeclaredWidth, geometry.DeclaredHeight, func(_ context.Context) (workspacesdk.AgentConn, error) {
 		return mockConn, nil
-	}, nil, quartz.NewReal(), slogtest.Make(t, nil))
+	}, func(_ context.Context, _ string, _ string, _ []byte) (chattool.AttachmentMetadata, error) {
+		t.Fatal("storeFile should not be called for left_click follow-up screenshots")
+		return chattool.AttachmentMetadata{}, nil
+	}, quartz.NewReal(), slogtest.Make(t, nil))
 
 	call := fantasy.ToolCall{
 		ID:    "test-2",
@@ -217,7 +260,10 @@ func TestComputerUseTool_Run_LeftClick(t *testing.T) {
 	resp, err := tool.Run(context.Background(), call)
 	require.NoError(t, err)
 	assert.Equal(t, "image", resp.Type)
-	assert.Equal(t, []byte("after-click"), resp.Data)
+	assert.Equal(t, []byte(followUpScreenshot), resp.Data)
+	attachments, err := chattool.AttachmentsFromMetadata(resp.Metadata)
+	require.NoError(t, err)
+	assert.Empty(t, attachments)
 }
 
 func TestComputerUseTool_Run_Wait(t *testing.T) {
@@ -226,6 +272,7 @@ func TestComputerUseTool_Run_Wait(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockConn := agentconnmock.NewMockAgentConn(ctrl)
 	geometry := workspacesdk.DefaultDesktopGeometry()
+	followUpScreenshot := base64.StdEncoding.EncodeToString([]byte("after-wait"))
 
 	mockConn.EXPECT().ExecuteDesktopAction(
 		gomock.Any(),
@@ -237,7 +284,7 @@ func TestComputerUseTool_Run_Wait(t *testing.T) {
 		assert.Equal(t, geometry.DeclaredHeight, *action.ScaledHeight)
 		return workspacesdk.DesktopActionResponse{
 			Output:           "screenshot",
-			ScreenshotData:   "after-wait",
+			ScreenshotData:   followUpScreenshot,
 			ScreenshotWidth:  geometry.DeclaredWidth,
 			ScreenshotHeight: geometry.DeclaredHeight,
 		}, nil
@@ -245,7 +292,10 @@ func TestComputerUseTool_Run_Wait(t *testing.T) {
 
 	tool := chattool.NewComputerUseTool(geometry.DeclaredWidth, geometry.DeclaredHeight, func(_ context.Context) (workspacesdk.AgentConn, error) {
 		return mockConn, nil
-	}, nil, quartz.NewReal(), slogtest.Make(t, nil))
+	}, func(_ context.Context, _ string, _ string, _ []byte) (chattool.AttachmentMetadata, error) {
+		t.Fatal("storeFile should not be called for wait screenshots")
+		return chattool.AttachmentMetadata{}, nil
+	}, quartz.NewReal(), slogtest.Make(t, nil))
 
 	call := fantasy.ToolCall{
 		ID:    "test-3",
@@ -257,8 +307,11 @@ func TestComputerUseTool_Run_Wait(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "image", resp.Type)
 	assert.Equal(t, "image/png", resp.MediaType)
-	assert.Equal(t, []byte("after-wait"), resp.Data)
+	assert.Equal(t, []byte(followUpScreenshot), resp.Data)
 	assert.False(t, resp.IsError)
+	attachments, err := chattool.AttachmentsFromMetadata(resp.Metadata)
+	require.NoError(t, err)
+	assert.Empty(t, attachments)
 }
 
 func TestComputerUseTool_Run_ConnError(t *testing.T) {
