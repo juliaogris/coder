@@ -5558,14 +5558,10 @@ func validateChatProviderCentralAPIKey(
 	if !centralEnabled || hasCentralAPIKey {
 		return nil
 	}
-	if normalizeChatProvider(provider) == "bedrock" {
+	if chatprovider.ProviderAllowsAmbientCredentials(provider) {
 		return nil
 	}
-	return xerrors.New(
-		"An explicit API key configuration is required when central API key " +
-			"is enabled for non-Bedrock providers. Bedrock can use ambient " +
-			"AWS credentials instead.",
-	)
+	return xerrors.New("API key is required when central API key is enabled.")
 }
 
 // ChatProviderAPIKeysFromDeploymentValues returns deployment-backed chat

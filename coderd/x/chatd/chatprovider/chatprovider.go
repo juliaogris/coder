@@ -73,6 +73,13 @@ func ProviderDisplayName(provider string) string {
 	return normalized
 }
 
+// ProviderAllowsAmbientCredentials reports whether provider can use
+// ambient credentials from the Coder server instead of an explicit
+// API key.
+func ProviderAllowsAmbientCredentials(provider string) bool {
+	return NormalizeProvider(provider) == fantasybedrock.Name
+}
+
 // ProviderAPIKeys contains API keys for provider calls.
 type ProviderAPIKeys struct {
 	OpenAI            string
@@ -1151,12 +1158,8 @@ func ModelFromConfig(
 	}
 
 	apiKey := providerKeys.APIKey(provider)
-	if apiKey == "" {
-		// Bedrock may use ambient AWS credentials only when resolution
-		// explicitly marked the provider available with an empty key.
-		if provider != fantasybedrock.Name || !providerKeys.HasProvider(provider) {
-			return nil, missingProviderAPIKeyError(provider)
-		}
+	if apiKey == "" && !ProviderAllowsAmbientCredentials(provider) {
+		return nil, missingProviderAPIKeyError(provider)
 	}
 	baseURL := providerKeys.BaseURL(provider)
 
@@ -1275,26 +1278,17 @@ func ModelFromConfig(
 }
 
 func providerCreationError(provider string, err error) error {
-	if provider != fantasybedrock.Name {
-		return xerrors.Errorf("create %s provider: %w", provider, err)
-	}
-
-	guidance := "check Bedrock credentials: API key bearer token or ambient AWS credentials such as an IAM role or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, plus region via AWS_REGION or a Bedrock-compatible Base URL"
-	return xerrors.Errorf("create %s provider: %w (%s)", provider, err, guidance)
+	return xerrors.Errorf("create %s provider: %w", provider, err)
 }
 
+// Providers that allow ambient credentials, such as Bedrock, bypass
+// this helper.
 func missingProviderAPIKeyError(provider string) error {
 	switch provider {
 	case fantasyanthropic.Name:
 		return xerrors.New("ANTHROPIC_API_KEY is not set")
 	case fantasyazure.Name:
 		return xerrors.New("AZURE_OPENAI_API_KEY is not set")
-	case fantasybedrock.Name:
-		return xerrors.New(
-			"No Bedrock credentials available. Provide a bearer token in the API key field, or " +
-				"configure ambient AWS credentials (IAM role, AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY) " +
-				"on the Coder server. Region must be set via AWS_REGION or a Bedrock-compatible Base URL.",
-		)
 	case fantasygoogle.Name:
 		return xerrors.New("GOOGLE_API_KEY is not set")
 	case fantasyopenai.Name:

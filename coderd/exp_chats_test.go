@@ -47,9 +47,7 @@ import (
 
 const (
 	chatProviderAPIKeySizeLimit = 10240
-	missingCentralAPIKeyMessage = "An explicit API key configuration is " +
-		"required when central API key is enabled for non-Bedrock providers. " +
-		"Bedrock can use ambient AWS credentials instead."
+	missingCentralKeyMessage    = "API key is required when central API key is enabled."
 )
 
 func chatDeploymentValues(t testing.TB) *codersdk.DeploymentValues {
@@ -1870,7 +1868,7 @@ func TestCreateChatProvider(t *testing.T) {
 			CentralAPIKeyEnabled: ptr.Ref(true),
 		})
 		sdkErr := requireSDKError(t, err, http.StatusBadRequest)
-		require.Equal(t, missingCentralAPIKeyMessage, sdkErr.Message)
+		require.Equal(t, missingCentralKeyMessage, sdkErr.Message)
 	})
 
 	t.Run("InvalidProvider", func(t *testing.T) {
@@ -1974,7 +1972,7 @@ func TestCreateChatProvider(t *testing.T) {
 			Provider: "openai",
 		})
 		sdkErr := requireSDKError(t, err, http.StatusBadRequest)
-		require.Equal(t, missingCentralAPIKeyMessage, sdkErr.Message)
+		require.Equal(t, missingCentralKeyMessage, sdkErr.Message)
 	})
 
 	t.Run("RejectsInvalidPolicyTuple", func(t *testing.T) {
@@ -2211,7 +2209,7 @@ func TestUpdateChatProvider(t *testing.T) {
 			CentralAPIKeyEnabled: ptr.Ref(true),
 		})
 		sdkErr := requireSDKError(t, err, http.StatusBadRequest)
-		require.Equal(t, missingCentralAPIKeyMessage, sdkErr.Message)
+		require.Equal(t, missingCentralKeyMessage, sdkErr.Message)
 	})
 
 	t.Run("RejectsClearingLastCentralKey", func(t *testing.T) {
@@ -2231,7 +2229,7 @@ func TestUpdateChatProvider(t *testing.T) {
 			APIKey: ptr.Ref(""),
 		})
 		sdkErr := requireSDKError(t, err, http.StatusBadRequest)
-		require.Equal(t, missingCentralAPIKeyMessage, sdkErr.Message)
+		require.Equal(t, missingCentralKeyMessage, sdkErr.Message)
 	})
 
 	t.Run("RejectsEnablingCentralKeyWithoutKey", func(t *testing.T) {
@@ -2252,7 +2250,7 @@ func TestUpdateChatProvider(t *testing.T) {
 			CentralAPIKeyEnabled: ptr.Ref(true),
 		})
 		sdkErr := requireSDKError(t, err, http.StatusBadRequest)
-		require.Equal(t, missingCentralAPIKeyMessage, sdkErr.Message)
+		require.Equal(t, missingCentralKeyMessage, sdkErr.Message)
 	})
 
 	t.Run("RejectsInvalidPolicyTuple", func(t *testing.T) {

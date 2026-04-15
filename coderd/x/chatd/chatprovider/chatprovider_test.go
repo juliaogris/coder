@@ -816,6 +816,9 @@ func TestModelFromConfig_Bedrock(t *testing.T) {
 
 	const modelID = "us.anthropic.claude-sonnet-4-20250514-v1:0"
 
+	// This verifies the policy gate that permits an empty Bedrock key.
+	// End-to-end ambient credential auth would need a real AWS
+	// environment or a more complete mock, which is outside this scope.
 	t.Run("AllowsEmptyAPIKeyForAmbientCredentials", func(t *testing.T) {
 		t.Parallel()
 
@@ -833,20 +836,6 @@ func TestModelFromConfig_Bedrock(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, model)
 		require.Equal(t, fantasybedrock.Name, model.Provider())
-	})
-
-	t.Run("RejectsUnresolvedAmbientCredentials", func(t *testing.T) {
-		t.Parallel()
-
-		model, err := chatprovider.ModelFromConfig(
-			fantasybedrock.Name,
-			modelID,
-			chatprovider.ProviderAPIKeys{},
-			chatprovider.UserAgent(),
-			nil,
-		)
-		require.Nil(t, model)
-		require.EqualError(t, err, "No Bedrock credentials available. Provide a bearer token in the API key field, or configure ambient AWS credentials (IAM role, AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY) on the Coder server. Region must be set via AWS_REGION or a Bedrock-compatible Base URL.")
 	})
 
 	t.Run("ForwardsBaseURLAndExplicitAPIKey", func(t *testing.T) {
@@ -931,7 +920,6 @@ func TestModelFromConfig_Bedrock(t *testing.T) {
 		}
 
 		for _, tt := range tests {
-			tt := tt
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 
