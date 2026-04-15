@@ -477,6 +477,16 @@ export interface InitComplete {
   moduleFilesHash: Uint8Array;
 }
 
+/**
+ * UserSecretValue carries a user secret for build-time injection
+ * into the Terraform process environment.
+ */
+export interface UserSecretValue {
+  envName: string;
+  filePath: string;
+  value: Uint8Array;
+}
+
 /** PlanRequest asks the provisioner to plan what resources & parameters it will create */
 export interface PlanRequest {
   metadata: Metadata | undefined;
@@ -486,6 +496,12 @@ export interface PlanRequest {
   previousParameterValues: RichParameterValue[];
   /** state is the provisioner state (if any) */
   state: Uint8Array;
+  /**
+   * User secrets for build-time injection into the Terraform
+   * process. The provisioner encodes these as CODER_SECRET_ENV_*
+   * and CODER_SECRET_FILE_* environment variables.
+   */
+  userSecrets: UserSecretValue[];
 }
 
 /** PlanComplete indicates a request to plan completed. */
@@ -1479,6 +1495,21 @@ export const InitComplete = {
   },
 };
 
+export const UserSecretValue = {
+  encode(message: UserSecretValue, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.envName !== "") {
+      writer.uint32(10).string(message.envName);
+    }
+    if (message.filePath !== "") {
+      writer.uint32(18).string(message.filePath);
+    }
+    if (message.value.length !== 0) {
+      writer.uint32(26).bytes(message.value);
+    }
+    return writer;
+  },
+};
+
 export const PlanRequest = {
   encode(message: PlanRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
     if (message.metadata !== undefined) {
@@ -1498,6 +1529,9 @@ export const PlanRequest = {
     }
     if (message.state.length !== 0) {
       writer.uint32(50).bytes(message.state);
+    }
+    for (const v of message.userSecrets) {
+      UserSecretValue.encode(v!, writer.uint32(58).fork()).ldelim();
     }
     return writer;
   },

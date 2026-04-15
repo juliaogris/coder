@@ -951,16 +951,16 @@ func (r *Runner) runWorkspaceBuild(ctx context.Context) (*proto.CompletedJob, *p
 	}
 
 	// Run `terraform plan`
-	planComplete, failed := r.plan(ctx, "Planning Infrastructure", &sdkproto.PlanRequest{
-		Metadata:                r.job.GetWorkspaceBuild().Metadata,
-		RichParameterValues:     r.job.GetWorkspaceBuild().RichParameterValues,
-		VariableValues:          r.job.GetWorkspaceBuild().VariableValues,
-		ExternalAuthProviders:   r.job.GetWorkspaceBuild().ExternalAuthProviders,
-		PreviousParameterValues: r.job.GetWorkspaceBuild().PreviousParameterValues,
-		State:                   r.job.GetWorkspaceBuild().State,
-	})
-	if failed != nil {
-		return nil, failed
+		planComplete, failed := r.plan(ctx, "Planning Infrastructure", &sdkproto.PlanRequest{
+			Metadata:                r.job.GetWorkspaceBuild().Metadata,
+			RichParameterValues:     r.job.GetWorkspaceBuild().RichParameterValues,
+			VariableValues:          r.job.GetWorkspaceBuild().VariableValues,
+			ExternalAuthProviders:   r.job.GetWorkspaceBuild().ExternalAuthProviders,
+			PreviousParameterValues: r.job.GetWorkspaceBuild().PreviousParameterValues,
+			State:                   r.job.GetWorkspaceBuild().State,
+			UserSecrets:             r.job.GetWorkspaceBuild().UserSecrets,
+		})
+		if failed != nil {		return nil, failed
 	}
 	if planComplete == nil {
 		return nil, r.failedWorkspaceBuildf("invalid message type received from provisioner during plan")

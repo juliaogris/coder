@@ -422,6 +422,14 @@ message InitComplete {
   bytes module_files_hash = 5;
 }
 
+// UserSecretValue carries a user secret for build-time injection
+// into the Terraform process environment.
+message UserSecretValue {
+  string env_name = 1;
+  string file_path = 2;
+  bytes value = 3;
+}
+
 // PlanRequest asks the provisioner to plan what resources & parameters it will create
 message PlanRequest {
   Metadata metadata = 1;
@@ -432,6 +440,11 @@ message PlanRequest {
 
   // state is the provisioner state (if any)
   bytes state = 6;
+
+  // User secrets for build-time injection into the Terraform
+  // process. The provisioner encodes these as CODER_SECRET_ENV_*
+  // and CODER_SECRET_FILE_* environment variables.
+  repeated UserSecretValue user_secrets = 7;
 }
 
 // PlanComplete indicates a request to plan completed.

@@ -724,7 +724,167 @@ func TestAcquireJob(t *testing.T) {
 				require.ErrorIs(t, err, sql.ErrNoRows)
 			})
 		}
+		t.Run(tc.name+"_UserSecrets", func(t *testing.T) {
+			t.Parallel()
+			srv, db, ps, pd := setup(t, false, nil)
+			ctx, cancel := context.WithTimeout(context.Background(), testutil.WaitShort)
+			defer cancel()
+
+			user := dbgen.User(t, db, database.User{})
+			dbgen.OrganizationMember(t, db, database.OrganizationMember{
+				UserID:         user.ID,
+				OrganizationID: pd.OrganizationID,
+			})
+			dbgen.GitSSHKey(t, db, database.GitSSHKey{UserID: user.ID})
+
+			// Create secrets: 3 valid + 1 that should be filtered
+			// out. We call CreateUserSecret directly because
+			// dbgen.UserSecret fills in defaults for empty strings.
+			authCtx := dbauthz.AsSystemRestricted(ctx)
+			_, err := db.CreateUserSecret(authCtx, database.CreateUserSecretParams{
+				ID:      uuid.New(),
+				UserID:  user.ID,
+				Name:    "github-token",
+				EnvName: "GITHUB_TOKEN",
+				Value:   "ghp_xxxx",
+			})
+			require.NoError(t, err)
+			_, err = db.CreateUserSecret(authCtx, database.CreateUserSecretParams{
+				ID:       uuid.New(),
+				UserID:   user.ID,
+				Name:     "ssh-key",
+				FilePath: "~/.ssh/id_rsa",
+				Value:    "private-key",
+			})
+			require.NoError(t, err)
+			_, err = db.CreateUserSecret(authCtx, database.CreateUserSecretParams{
+				ID:       uuid.New(),
+				UserID:   user.ID,
+				Name:     "both",
+				EnvName:  "BOTH",
+				FilePath: "/etc/both",
+				Value:    "both-val",
+			})
+			require.NoError(t, err)
+			_, err = db.CreateUserSecret(authCtx, database.CreateUserSecretParams{
+				ID:     uuid.New(),
+				UserID: user.ID,
+				Name:   "no-injection",
+				Value:  "no-injection",
+			})
+			require.NoError(t, err)
+
+			template := dbgen.Template(t, db, database.Template{
+				Name:           "template",
+				Provisioner:    database.ProvisionerTypeEcho,
+				OrganizationID: pd.OrganizationID,
+				CreatedBy:      user.ID,
+			})
+			file := dbgen.File(t, db, database.File{CreatedBy: user.ID})
+			version := dbgen.TemplateVersion(t, db, database.TemplateVersion{
+				CreatedBy:      user.ID,
+				OrganizationID: pd.OrganizationID,
+				TemplateID:     uuid.NullUUID{UUID: template.ID, Valid: true},
+				JobID:          uuid.New(),
+			})
+			// Import version job
+			_ = dbgen.ProvisionerJob(t, db, ps, database.ProvisionerJob{
+				OrganizationID: pd.OrganizationID,
+				ID:             version.JobID,
+				InitiatorID:    user.ID,
+				FileID:         file.ID,
+				Provisioner:    database.ProvisionerTypeEcho,
+				StorageMethod:  database.ProvisionerStorageMethodFile,
+				Type:           database.ProvisionerJobTypeTemplateVersionImport,
+				Input: must(json.Marshal(provisionerdserver.TemplateVersionImportJob{
+					TemplateVersionID: version.ID,
+				})),
+			})
+			workspace := dbgen.Workspace(t, db, database.WorkspaceTable{
+				TemplateID:     template.ID,
+				OwnerID:        user.ID,
+				OrganizationID: pd.OrganizationID,
+			})
+			buildID := uuid.New()
+			dbJob := dbgen.ProvisionerJob(t, db, ps, database.ProvisionerJob{
+				OrganizationID: pd.OrganizationID,
+				InitiatorID:    user.ID,
+				Provisioner:    database.ProvisionerTypeEcho,
+				StorageMethod:  database.ProvisionerStorageMethodFile,
+				FileID:         file.ID,
+				Type:           database.ProvisionerJobTypeWorkspaceBuild,
+				Input: must(json.Marshal(provisionerdserver.WorkspaceProvisionJob{
+					WorkspaceBuildID: buildID,
+				})),
+				Tags: pd.Tags,
+			})
+			_ = dbgen.WorkspaceBuild(t, db, database.WorkspaceBuild{
+				ID:                buildID,
+				WorkspaceID:       workspace.ID,
+				BuildNumber:       1,
+				JobID:             dbJob.ID,
+				TemplateVersionID: version.ID,
+				Transition:        database.WorkspaceTransitionStart,
+				Reason:            database.BuildReasonInitiator,
+			})
+
+			startPublished := make(chan struct{})
+			var closed bool
+			closeStartSubscribe, err := ps.SubscribeWithErr(wspubsub.WorkspaceEventChannel(workspace.OwnerID),
+				wspubsub.HandleWorkspaceEvent(
+					func(_ context.Context, e wspubsub.WorkspaceEvent, err error) {
+						if err != nil {
+							return
+						}
+						if e.Kind == wspubsub.WorkspaceEventKindStateChange && e.WorkspaceID == workspace.ID {
+							if !closed {
+								close(startPublished)
+								closed = true
+							}
+						}
+					}))
+			require.NoError(t, err)
+			defer closeStartSubscribe()
+
+			var job *proto.AcquiredJob
+			for {
+				// Grab jobs until we find the workspace build
+				// job.
+				job, err = tc.acquire(ctx, srv)
+				require.NoError(t, err)
+				if _, ok := job.Type.(*proto.AcquiredJob_WorkspaceBuild_); ok {
+					break
+				}
+			}
+
+			<-startPublished
+
+			wb := job.Type.(*proto.AcquiredJob_WorkspaceBuild_).WorkspaceBuild
+			require.Len(t, wb.UserSecrets, 3, "expected 3 secrets (the one with empty env_name and file_path should be filtered)")
+
+			// Sort by env_name+file_path so assertions are
+			// deterministic.
+			slices.SortFunc(wb.UserSecrets, func(a, b *sdkproto.UserSecretValue) int {
+				return strings.Compare(a.EnvName+a.FilePath, b.EnvName+b.FilePath)
+			})
+
+			// After sorting: ("BOTH" "/etc/both"),
+			// ("GITHUB_TOKEN" ""), ("" "~/.ssh/id_rsa")
+			require.Equal(t, "BOTH", wb.UserSecrets[0].EnvName)
+			require.Equal(t, "/etc/both", wb.UserSecrets[0].FilePath)
+			require.Equal(t, []byte("both-val"), wb.UserSecrets[0].Value)
+
+			require.Equal(t, "GITHUB_TOKEN", wb.UserSecrets[1].EnvName)
+			require.Equal(t, "", wb.UserSecrets[1].FilePath)
+			require.Equal(t, []byte("ghp_xxxx"), wb.UserSecrets[1].Value)
+
+			require.Equal(t, "", wb.UserSecrets[2].EnvName)
+			require.Equal(t, "~/.ssh/id_rsa", wb.UserSecrets[2].FilePath)
+			require.Equal(t, []byte("private-key"), wb.UserSecrets[2].Value)
+		})
+
 		t.Run(tc.name+"_TemplateVersionDryRun", func(t *testing.T) {
+
 			t.Parallel()
 			srv, db, ps, pd := setup(t, false, nil)
 			ctx := context.Background()
