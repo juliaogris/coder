@@ -62,12 +62,11 @@ AWS Bedrock supports two credential modes for Agents providers:
   `AWS_SECRET_ACCESS_KEY` environment variables.
 
 Region comes from the standard AWS SDK configuration. In most deployments, set
-`AWS_REGION` on the Coder server. You can also set the **Base URL** to a
-Bedrock-compatible endpoint that includes the region, such as
-`https://bedrock-runtime.us-east-1.amazonaws.com`.
+`AWS_REGION` on the Coder server. The SDK falls back to `us-east-1` when no
+region is configured.
 
 The **Base URL** field overrides the Bedrock runtime endpoint. Use it for
-custom endpoints, VPC endpoints, or to specify a region directly.
+custom endpoints or VPC endpoints.
 
 > [!NOTE]
 > Agents Bedrock provider configuration is separate from AI Gateway Bedrock
