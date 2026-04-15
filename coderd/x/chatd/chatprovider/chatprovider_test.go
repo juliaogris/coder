@@ -82,7 +82,7 @@ func TestResolveUserProviderKeys(t *testing.T) {
 			},
 		},
 		{
-			name:      "BedrockCentralAmbientCredentialsEnabled",
+			name:      "BedrockCentralOnlyAmbientCredentialsEnabled",
 			providers: []chatprovider.ConfiguredProvider{configuredProvider(bedrockProviderID, fantasybedrock.Name, true, "", false, false)},
 			wantAvailability: map[string]chatprovider.ProviderAvailability{
 				fantasybedrock.Name: {Available: true},
@@ -92,6 +92,45 @@ func TestResolveUserProviderKeys(t *testing.T) {
 			},
 			wantKeyPresence: map[string]bool{
 				fantasybedrock.Name: true,
+			},
+		},
+		{
+			name:      "BedrockFallbackAmbientCredentialsEnabled",
+			providers: []chatprovider.ConfiguredProvider{configuredProvider(bedrockProviderID, fantasybedrock.Name, true, "", true, true)},
+			wantAvailability: map[string]chatprovider.ProviderAvailability{
+				fantasybedrock.Name: {Available: true},
+			},
+			wantKeys: map[string]string{
+				fantasybedrock.Name: "",
+			},
+			wantKeyPresence: map[string]bool{
+				fantasybedrock.Name: true,
+			},
+		},
+		{
+			name:      "BedrockUserKeyRequiredWithoutFallback",
+			providers: []chatprovider.ConfiguredProvider{configuredProvider(bedrockProviderID, fantasybedrock.Name, true, "", true, false)},
+			wantAvailability: map[string]chatprovider.ProviderAvailability{
+				fantasybedrock.Name: {Available: false, UnavailableReason: codersdk.ChatModelProviderUnavailableReasonUserAPIKeyRequired},
+			},
+			wantKeys: map[string]string{
+				fantasybedrock.Name: "",
+			},
+			wantKeyPresence: map[string]bool{
+				fantasybedrock.Name: false,
+			},
+		},
+		{
+			name:      "BedrockCentralDisabledMissingAPIKey",
+			providers: []chatprovider.ConfiguredProvider{configuredProvider(bedrockProviderID, fantasybedrock.Name, false, "", false, false)},
+			wantAvailability: map[string]chatprovider.ProviderAvailability{
+				fantasybedrock.Name: {Available: false, UnavailableReason: codersdk.ChatModelProviderUnavailableMissingAPIKey},
+			},
+			wantKeys: map[string]string{
+				fantasybedrock.Name: "",
+			},
+			wantKeyPresence: map[string]bool{
+				fantasybedrock.Name: false,
 			},
 		},
 		{
@@ -214,6 +253,7 @@ func TestResolveUserProviderKeys(t *testing.T) {
 			for provider, wantPresent := range tt.wantKeyPresence {
 				gotKey, ok := keys.ByProvider[provider]
 				require.Equal(t, wantPresent, ok, "unexpected key presence for provider %q", provider)
+				require.Equal(t, wantPresent, keys.HasProvider(provider), "unexpected HasProvider result for provider %q", provider)
 				if wantPresent {
 					require.Equal(t, tt.wantKeys[provider], gotKey)
 				}
@@ -793,6 +833,20 @@ func TestModelFromConfig_Bedrock(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, model)
 		require.Equal(t, fantasybedrock.Name, model.Provider())
+	})
+
+	t.Run("RejectsUnresolvedAmbientCredentials", func(t *testing.T) {
+		t.Parallel()
+
+		model, err := chatprovider.ModelFromConfig(
+			fantasybedrock.Name,
+			modelID,
+			chatprovider.ProviderAPIKeys{},
+			chatprovider.UserAgent(),
+			nil,
+		)
+		require.Nil(t, model)
+		require.EqualError(t, err, "No Bedrock credentials available. Provide a bearer token in the API key field, or configure ambient AWS credentials (IAM role, AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY) on the Coder server. Region must be set via AWS_REGION or a Bedrock-compatible Base URL.")
 	})
 
 	t.Run("ForwardsBaseURLAndExplicitAPIKey", func(t *testing.T) {

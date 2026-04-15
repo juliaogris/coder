@@ -135,6 +135,17 @@ func (k ProviderAPIKeys) APIKey(provider string) string {
 	}
 }
 
+// HasProvider reports whether a provider has an explicit resolved entry
+// in the provider key map, even when the resolved key is empty.
+func (k ProviderAPIKeys) HasProvider(provider string) bool {
+	normalized := NormalizeProvider(provider)
+	if normalized == "" || k.ByProvider == nil {
+		return false
+	}
+	_, ok := k.ByProvider[normalized]
+	return ok
+}
+
 // BaseURL returns the configured base URL for a provider.
 func (k ProviderAPIKeys) BaseURL(provider string) string {
 	normalized := NormalizeProvider(provider)
@@ -296,9 +307,13 @@ func ResolveUserProviderKeys(
 			}
 		case normalizedProvider == fantasybedrock.Name && provider.CentralAPIKeyEnabled:
 			// Bedrock can use ambient AWS credentials from the Coder server
-			// when central credential mode is enabled but no explicit API
-			// key is stored.
-			resolved.Available = true
+			// without an explicit key, but only when the credential policy
+			// allows central credentials to satisfy the request.
+			if !provider.AllowUserAPIKey || provider.AllowCentralAPIKeyFallback {
+				resolved.Available = true
+			} else {
+				resolved.UnavailableReason = codersdk.ChatModelProviderUnavailableReasonUserAPIKeyRequired
+			}
 		case provider.AllowUserAPIKey && provider.AllowCentralAPIKeyFallback && provider.CentralAPIKeyEnabled:
 			// When users can add their own key, a missing central fallback key is
 			// still something the user can remedy.
@@ -1136,8 +1151,12 @@ func ModelFromConfig(
 	}
 
 	apiKey := providerKeys.APIKey(provider)
-	if apiKey == "" && provider != fantasybedrock.Name {
-		return nil, missingProviderAPIKeyError(provider)
+	if apiKey == "" {
+		// Bedrock may use ambient AWS credentials only when resolution
+		// explicitly marked the provider available with an empty key.
+		if provider != fantasybedrock.Name || !providerKeys.HasProvider(provider) {
+			return nil, missingProviderAPIKeyError(provider)
+		}
 	}
 	baseURL := providerKeys.BaseURL(provider)
 
