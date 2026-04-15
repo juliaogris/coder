@@ -2815,9 +2815,9 @@ func TestHeartbeatTick_DBErrorDoesNotInterruptChats(t *testing.T) {
 }
 
 func TestGetWorkspaceConn_DisconnectedAgentCacheMiss(t *testing.T) {
-	// Stage 1 red test: when ensureWorkspaceAgent returns a
-	// disconnected agent (cache miss), getWorkspaceConn should
-	// return errChatAgentDisconnected without attempting to dial.
+	// When ensureWorkspaceAgent returns a disconnected agent
+	// (cache miss), getWorkspaceConn should return
+	// errChatAgentDisconnected without attempting to dial.
 	t.Parallel()
 
 	ctx := context.Background()
@@ -2860,6 +2860,7 @@ func TestGetWorkspaceConn_DisconnectedAgentCacheMiss(t *testing.T) {
 	server := &Server{
 		db:                             db,
 		agentInactiveDisconnectTimeout: 30 * time.Second,
+		dialTimeout:                    defaultDialTimeout,
 	}
 	server.agentConnFn = func(context.Context, uuid.UUID) (workspacesdk.AgentConn, func(), error) {
 		dialCalled = true
@@ -2889,8 +2890,8 @@ func TestGetWorkspaceConn_DisconnectedAgentCacheMiss(t *testing.T) {
 }
 
 func TestGetWorkspaceConn_DisconnectedAgentCacheHit(t *testing.T) {
-	// Stage 1 red test: when a cached connection exists but the
-	// agent's status has become disconnected (time elapsed past
+	// When a cached connection exists but the agent's status
+	// has become disconnected (time elapsed past
 	// inactiveTimeout), getWorkspaceConn should detect this,
 	// release the cached connection, and return
 	// errChatAgentDisconnected.
@@ -2898,6 +2899,7 @@ func TestGetWorkspaceConn_DisconnectedAgentCacheHit(t *testing.T) {
 
 	ctx := context.Background()
 	ctrl := gomock.NewController(t)
+	db := dbmock.NewMockStore(ctrl)
 
 	workspaceID := uuid.New()
 	agentID := uuid.New()
@@ -2926,11 +2928,19 @@ func TestGetWorkspaceConn_DisconnectedAgentCacheHit(t *testing.T) {
 		},
 	}
 
+	// The production code re-fetches the agent row on cache hit
+	// to see the latest heartbeat timestamp.
+	db.EXPECT().GetWorkspaceAgentByID(gomock.Any(), agentID).
+		Return(disconnectedAgent, nil).
+		Times(1)
+
 	cachedConn := agentconnmock.NewMockAgentConn(ctrl)
 	var releaseCalled bool
 
 	server := &Server{
+		db:                             db,
 		agentInactiveDisconnectTimeout: 30 * time.Second,
+		dialTimeout:                    defaultDialTimeout,
 	}
 	server.agentConnFn = func(context.Context, uuid.UUID) (workspacesdk.AgentConn, func(), error) {
 		return nil, nil, xerrors.New("should not be called")
@@ -2965,10 +2975,81 @@ func TestGetWorkspaceConn_DisconnectedAgentCacheHit(t *testing.T) {
 	require.Nil(t, workspaceCtx.conn)
 }
 
+func TestGetWorkspaceConn_TimedOutAgentCacheMiss(t *testing.T) {
+	// When ensureWorkspaceAgent returns an agent in the Timeout
+	// state (never connected, connection timeout exceeded),
+	// getWorkspaceConn should return errChatAgentDisconnected
+	// without attempting to dial.
+	t.Parallel()
+
+	ctx := context.Background()
+	ctrl := gomock.NewController(t)
+	db := dbmock.NewMockStore(ctrl)
+
+	workspaceID := uuid.New()
+	agentID := uuid.New()
+	chat := database.Chat{
+		ID: uuid.New(),
+		WorkspaceID: uuid.NullUUID{
+			UUID:  workspaceID,
+			Valid: true,
+		},
+		AgentID: uuid.NullUUID{
+			UUID:  agentID,
+			Valid: true,
+		},
+	}
+
+	// Agent that never connected and exceeded its connection
+	// timeout. FirstConnectedAt is invalid, CreatedAt is old
+	// enough, and ConnectionTimeoutSeconds is set.
+	timedOutAgent := database.WorkspaceAgent{
+		ID:                       agentID,
+		CreatedAt:                time.Now().Add(-10 * time.Minute),
+		ConnectionTimeoutSeconds: 60,
+	}
+
+	db.EXPECT().GetWorkspaceAgentByID(gomock.Any(), agentID).
+		Return(timedOutAgent, nil).
+		Times(1)
+
+	var dialCalled bool
+	server := &Server{
+		db:                             db,
+		agentInactiveDisconnectTimeout: 30 * time.Second,
+		dialTimeout:                    defaultDialTimeout,
+	}
+	server.agentConnFn = func(context.Context, uuid.UUID) (workspacesdk.AgentConn, func(), error) {
+		dialCalled = true
+		return nil, nil, xerrors.New("should not be called")
+	}
+
+	chatStateMu := &sync.Mutex{}
+	currentChat := chat
+	workspaceCtx := turnWorkspaceContext{
+		server:           server,
+		chatStateMu:      chatStateMu,
+		currentChat:      &currentChat,
+		loadChatSnapshot: func(context.Context, uuid.UUID) (database.Chat, error) { return database.Chat{}, nil },
+	}
+	defer workspaceCtx.close()
+
+	gotConn, err := workspaceCtx.getWorkspaceConn(ctx)
+	require.Nil(t, gotConn)
+	require.ErrorIs(t, err, errChatAgentDisconnected)
+	require.False(t, dialCalled, "dial should not be attempted for a timed-out agent")
+
+	// Cache should be cleared.
+	workspaceCtx.mu.Lock()
+	defer workspaceCtx.mu.Unlock()
+	require.False(t, workspaceCtx.agentLoaded)
+	require.Nil(t, workspaceCtx.conn)
+}
+
 func TestGetWorkspaceConn_ConnectingAgentProceeds(t *testing.T) {
-	// Stage 1 red test: a "connecting" agent (never connected,
-	// normal after fresh build) must NOT be blocked by the
-	// status check. The dial should proceed.
+	// A "connecting" agent (never connected, normal after
+	// fresh build) must NOT be blocked by the status check.
+	// The dial should proceed.
 	t.Parallel()
 
 	ctx := context.Background()
@@ -3004,7 +3085,7 @@ func TestGetWorkspaceConn_ConnectingAgentProceeds(t *testing.T) {
 	server := &Server{
 		db:                             db,
 		agentInactiveDisconnectTimeout: 30 * time.Second,
-		dialTimeout:                    30 * time.Second,
+		dialTimeout:                    defaultDialTimeout,
 	}
 	server.agentConnFn = func(_ context.Context, id uuid.UUID) (workspacesdk.AgentConn, func(), error) {
 		if id != agentID {
@@ -3029,8 +3110,8 @@ func TestGetWorkspaceConn_ConnectingAgentProceeds(t *testing.T) {
 }
 
 func TestGetWorkspaceConn_DialTimeout(t *testing.T) {
-	// Stage 2 red test: when dialWithLazyValidation blocks
-	// beyond the dial timeout, getWorkspaceConn should return
+	// When dialWithLazyValidation blocks beyond the dial
+	// timeout, getWorkspaceConn should return
 	// errChatDialTimeout instead of hanging indefinitely.
 	t.Parallel()
 
@@ -3096,10 +3177,10 @@ func TestGetWorkspaceConn_DialTimeout(t *testing.T) {
 }
 
 func TestGetWorkspaceConn_DialTimeoutParentCanceled(t *testing.T) {
-	// Stage 2 red test: when the parent context is canceled,
-	// the parent's error must propagate unchanged (not wrapped
-	// as a dial timeout). This is critical because the chatloop
-	// checks context.Cause(ctx) for ErrInterrupted.
+	// When the parent context is canceled, the parent's error
+	// must propagate unchanged (not wrapped as a dial timeout).
+	// This is critical because the chatloop checks
+	// context.Cause(ctx) for ErrInterrupted.
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -3176,6 +3257,7 @@ func TestGetWorkspaceConn_DialTimeoutParentCanceled(t *testing.T) {
 	require.NotErrorIs(t, err, errChatDialTimeout)
 	// The parent context's error should propagate.
 	require.Error(t, err)
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 func TestGetWorkspaceConn_DialErrorNotMisclassifiedAsTimeout(t *testing.T) {
@@ -3233,7 +3315,7 @@ func TestGetWorkspaceConn_DialErrorNotMisclassifiedAsTimeout(t *testing.T) {
 		agentInactiveDisconnectTimeout: 30 * time.Second,
 		// Generous timeout so the dial error fires well before
 		// the timeout.
-		dialTimeout: 30 * time.Second,
+		dialTimeout: defaultDialTimeout,
 	}
 	server.agentConnFn = func(context.Context, uuid.UUID) (workspacesdk.AgentConn, func(), error) {
 		// Return an error immediately (not a timeout).
