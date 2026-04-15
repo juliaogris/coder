@@ -1128,7 +1128,7 @@ func ModelFromConfig(
 	}
 
 	apiKey := providerKeys.APIKey(provider)
-	if apiKey == "" {
+	if apiKey == "" && provider != fantasybedrock.Name {
 		return nil, missingProviderAPIKeyError(provider)
 	}
 	baseURL := providerKeys.BaseURL(provider)
@@ -1163,11 +1163,16 @@ func ModelFromConfig(
 		providerClient, err = fantasyazure.New(azureOpts...)
 	case fantasybedrock.Name:
 		bedrockOpts := []fantasybedrock.Option{
-			fantasybedrock.WithAPIKey(apiKey),
 			fantasybedrock.WithUserAgent(userAgent),
+		}
+		if apiKey != "" {
+			bedrockOpts = append(bedrockOpts, fantasybedrock.WithAPIKey(apiKey))
 		}
 		if len(extraHeaders) > 0 {
 			bedrockOpts = append(bedrockOpts, fantasybedrock.WithHeaders(extraHeaders))
+		}
+		if baseURL != "" {
+			bedrockOpts = append(bedrockOpts, fantasybedrock.WithBaseURL(baseURL))
 		}
 		providerClient, err = fantasybedrock.New(bedrockOpts...)
 	case fantasygoogle.Name:
@@ -1232,7 +1237,7 @@ func ModelFromConfig(
 		return nil, xerrors.Errorf("unsupported model provider %q", provider)
 	}
 	if err != nil {
-		return nil, xerrors.Errorf("create %s provider: %w", provider, err)
+		return nil, providerCreationError(provider, err)
 	}
 
 	model, err := providerClient.LanguageModel(context.Background(), modelID)
@@ -1242,6 +1247,15 @@ func ModelFromConfig(
 	return model, nil
 }
 
+func providerCreationError(provider string, err error) error {
+	if provider != fantasybedrock.Name {
+		return xerrors.Errorf("create %s provider: %w", provider, err)
+	}
+
+	guidance := "check Bedrock credentials: API key bearer token or ambient AWS credentials such as an IAM role or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, plus region via AWS_REGION or a Bedrock-compatible Base URL"
+	return xerrors.Errorf("create %s provider: %w (%s)", provider, err, guidance)
+}
+
 func missingProviderAPIKeyError(provider string) error {
 	switch provider {
 	case fantasyanthropic.Name:
@@ -1249,7 +1263,11 @@ func missingProviderAPIKeyError(provider string) error {
 	case fantasyazure.Name:
 		return xerrors.New("AZURE_OPENAI_API_KEY is not set")
 	case fantasybedrock.Name:
-		return xerrors.New("BEDROCK_API_KEY is not set")
+		return xerrors.New(
+			"No Bedrock credentials available. Provide a bearer token in the API key field, or " +
+				"configure ambient AWS credentials (IAM role, AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY) " +
+				"on the Coder server. Region must be set via AWS_REGION or a Bedrock-compatible Base URL.",
+		)
 	case fantasygoogle.Name:
 		return xerrors.New("GOOGLE_API_KEY is not set")
 	case fantasyopenai.Name:
