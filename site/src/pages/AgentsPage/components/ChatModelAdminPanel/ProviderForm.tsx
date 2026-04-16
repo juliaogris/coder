@@ -330,11 +330,28 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 										disabled={isDisabled}
 									/>
 									{isBedrockProvider && (
-										<p className="m-0 text-xs text-content-secondary">
-											Optional. Enter a bearer token, or leave empty to use
-											ambient AWS credentials (IAM role, environment variables)
-											configured on the Coder server.
-										</p>
+										<div className="flex items-start justify-between gap-3">
+											<p className="m-0 flex-1 text-xs text-content-secondary">
+												Optional. Enter a bearer token, or leave empty to use
+												ambient AWS credentials (IAM role, environment
+												variables) configured on the Coder server.
+											</p>
+											{providerState.hasManagedAPIKey &&
+												!isDisabled &&
+												(!apiKeyModified || apiKey !== "") && (
+													<button
+														type="button"
+														className="appearance-none border-0 bg-transparent p-0 text-xs text-content-link hover:cursor-pointer hover:underline"
+														onClick={() => {
+															setApiKey("");
+															setApiKeyTouched(true);
+															setApiKeyModified(true);
+														}}
+													>
+														Clear stored token
+													</button>
+												)}
+										</div>
 									)}
 								</div>
 							</ProviderField>
