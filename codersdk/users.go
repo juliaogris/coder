@@ -615,7 +615,9 @@ func (c *Client) UpdateUserPassword(ctx context.Context, user string, req Update
 	return nil
 }
 
-// PostOrganizationMember adds a user to an organization
+// PostOrganizationMember adds a user to an organization.
+//
+// Deprecated: Use PostOrganizationMembers instead.
 func (c *Client) PostOrganizationMember(ctx context.Context, organizationID uuid.UUID, user string) (OrganizationMember, error) {
 	res, err := c.Request(ctx, http.MethodPost, fmt.Sprintf("/api/v2/organizations/%s/members/%s", organizationID, user), nil)
 	if err != nil {

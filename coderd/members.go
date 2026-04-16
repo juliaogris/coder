@@ -31,6 +31,7 @@ import (
 // @Param user path string true "User ID, name, or me"
 // @Success 200 {object} codersdk.OrganizationMember
 // @Router /organizations/{organization}/members/{user} [post]
+// @Deprecated use POST /organizations/{organization}/members instead
 func (api *API) postOrganizationMember(rw http.ResponseWriter, r *http.Request) {
 	var (
 		ctx               = r.Context()
