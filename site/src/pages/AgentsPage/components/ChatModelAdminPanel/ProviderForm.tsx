@@ -132,8 +132,9 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 		providerState.hasManagedAPIKey &&
 		apiKeyModified &&
 		effectiveApiKey === "";
-	const shouldSubmitAPIKey =
-		centralAPIKeyEnabled && (hasTypedAPIKey || isClearingBedrockAPIKey);
+	const hasPendingAPIKeyChange =
+		(centralAPIKeyEnabled && hasTypedAPIKey) || isClearingBedrockAPIKey;
+	const shouldCreateAPIKey = centralAPIKeyEnabled && hasTypedAPIKey;
 	const hasCredentialSource = centralAPIKeyEnabled || allowUserAPIKey;
 	const apiKeyDescription = isBedrockProvider
 		? "Bearer token for Bedrock authentication. Leave empty to use ambient AWS credentials."
@@ -151,7 +152,7 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 
 	const isDirty =
 		displayName.trim() !== initialValues.displayName ||
-		shouldSubmitAPIKey ||
+		hasPendingAPIKeyChange ||
 		baseURLValue.trim() !== initialValues.baseURL.trim() ||
 		centralAPIKeyEnabled !== initialValues.centralAPIKeyEnabled ||
 		allowUserAPIKey !== initialValues.allowUserAPIKey ||
@@ -192,7 +193,7 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 				...(trimmedDisplayName !== currentDisplayName && {
 					display_name: trimmedDisplayName,
 				}),
-				...(shouldSubmitAPIKey && { api_key: effectiveApiKey }),
+				...(hasPendingAPIKeyChange && { api_key: effectiveApiKey }),
 				...(trimmedBaseURL !== currentBaseURL && {
 					base_url: trimmedBaseURL,
 				}),
@@ -221,7 +222,7 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 		} else {
 			const req: TypesGen.CreateChatProviderConfigRequest = {
 				provider,
-				...(shouldSubmitAPIKey && { api_key: effectiveApiKey }),
+				...(shouldCreateAPIKey && { api_key: effectiveApiKey }),
 				central_api_key_enabled: centralAPIKeyEnabled,
 				allow_user_api_key: allowUserAPIKey,
 				allow_central_api_key_fallback: effectiveFallback,
