@@ -90,6 +90,81 @@ func (api *API) postOrganizationMember(rw http.ResponseWriter, r *http.Request) 
 	httpapi.Write(ctx, rw, http.StatusOK, resp[0])
 }
 
+// @Summary Batch add organization members
+// @ID batch-add-organization-members
+// @Security CoderSessionToken
+// @Accept json
+// @Produce json
+// @Tags Members
+// @Param organization path string true "Organization ID"
+// @Param request body codersdk.AddOrganizationMembersRequest true "Add members request"
+// @Success 200 {array} codersdk.OrganizationMember
+// @Router /organizations/{organization}/members [post]
+func (api *API) postOrganizationMembers(rw http.ResponseWriter, r *http.Request) {
+	var (
+		ctx          = r.Context()
+		organization = httpmw.OrganizationParam(r)
+	)
+
+	var req codersdk.AddOrganizationMembersRequest
+	if !httpapi.Read(ctx, rw, r, &req) {
+		return
+	}
+
+	// Resolve all users up-front so we can validate before inserting.
+	users := make([]database.User, 0, len(req.UserIDs))
+	for _, uid := range req.UserIDs {
+		//nolint:gocritic // System needs to look up arbitrary users by ID.
+		user, err := api.Database.GetUserByID(dbauthz.AsSystemRestricted(ctx), uid)
+		if err != nil {
+			httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
+				Message: fmt.Sprintf("User %q not found.", uid),
+			})
+			return
+		}
+		if !api.manualOrganizationMembership(ctx, rw, user) {
+			return
+		}
+		users = append(users, user)
+	}
+
+	var allMembers []database.OrganizationMember
+	err := api.Database.InTx(func(tx database.Store) error {
+		for _, user := range users {
+			member, err := tx.InsertOrganizationMember(ctx, database.InsertOrganizationMemberParams{
+				OrganizationID: organization.ID,
+				UserID:         user.ID,
+				CreatedAt:      dbtime.Now(),
+				UpdatedAt:      dbtime.Now(),
+				Roles:          []string{},
+			})
+			if database.IsUniqueViolation(err, database.UniqueOrganizationMembersPkey) {
+				return xerrors.Errorf("user %q is already a member of %q", user.Username, organization.DisplayName)
+			}
+			if err != nil {
+				return xerrors.Errorf("insert member %q: %w", user.Username, err)
+			}
+			allMembers = append(allMembers, member)
+		}
+		return nil
+	}, nil)
+	if err != nil {
+		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
+			Message: "Failed to add members.",
+			Detail:  err.Error(),
+		})
+		return
+	}
+
+	resp, err := convertOrganizationMembers(ctx, api.Database, allMembers)
+	if err != nil {
+		httpapi.InternalServerError(rw, err)
+		return
+	}
+
+	httpapi.Write(ctx, rw, http.StatusOK, resp)
+}
+
 // @Summary Remove organization member
 // @ID remove-organization-member
 // @Security CoderSessionToken

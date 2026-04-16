@@ -629,6 +629,21 @@ func (c *Client) PostOrganizationMember(ctx context.Context, organizationID uuid
 	return member, json.NewDecoder(res.Body).Decode(&member)
 }
 
+// PostOrganizationMembers adds multiple users to an organization in
+// a single batch request.
+func (c *Client) PostOrganizationMembers(ctx context.Context, organizationID uuid.UUID, req AddOrganizationMembersRequest) ([]OrganizationMember, error) {
+	res, err := c.Request(ctx, http.MethodPost, fmt.Sprintf("/api/v2/organizations/%s/members", organizationID), req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, ReadBodyAsError(res)
+	}
+	var members []OrganizationMember
+	return members, json.NewDecoder(res.Body).Decode(&members)
+}
+
 // DeleteOrganizationMember removes a user from an organization
 func (c *Client) DeleteOrganizationMember(ctx context.Context, organizationID uuid.UUID, user string) error {
 	res, err := c.Request(ctx, http.MethodDelete, fmt.Sprintf("/api/v2/organizations/%s/members/%s", organizationID, user), nil)
