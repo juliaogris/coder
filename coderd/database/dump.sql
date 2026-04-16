@@ -846,7 +846,7 @@ BEGIN
     ),
     (
         'agents-access',
-        'Coder Agents User',
+        '',
         NEW.id,
         '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
         true, NOW(), NOW()

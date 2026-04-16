@@ -6,7 +6,7 @@ INSERT INTO custom_roles (
     is_system, created_at, updated_at
 )
 SELECT
-    'agents-access', 'Coder Agents User', id,
+    'agents-access', '', id,
     '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
     true, NOW(), NOW()
 FROM organizations
@@ -56,7 +56,7 @@ BEGIN
     ),
     (
         'agents-access',
-        'Coder Agents User',
+        '',
         NEW.id,
         '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
         true, NOW(), NOW()
