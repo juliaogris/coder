@@ -4665,7 +4665,7 @@ func (api *API) listUserChatProviderConfigs(rw http.ResponseWriter, r *http.Requ
 		hasUserAPIKey := hasUserAPIKeyByProviderID[provider.ID]
 		hasCentralAPIKeyFallback := provider.Enabled &&
 			provider.AllowCentralApiKeyFallback &&
-			api.hasEffectiveCentralProviderAPIKey(ctx, provider, uuid.Nil)
+			api.hasEffectiveCentralProviderCredentials(ctx, provider, uuid.Nil)
 		resp = append(
 			resp,
 			convertUserChatProviderConfig(
@@ -4751,7 +4751,7 @@ func (api *API) upsertUserChatProviderKey(rw http.ResponseWriter, r *http.Reques
 
 	hasCentralAPIKeyFallback := provider.Enabled &&
 		provider.AllowCentralApiKeyFallback &&
-		api.hasEffectiveCentralProviderAPIKey(ctx, provider, uuid.Nil)
+		api.hasEffectiveCentralProviderCredentials(ctx, provider, uuid.Nil)
 	httpapi.Write(
 		ctx,
 		rw,
@@ -5579,6 +5579,18 @@ func (api *API) hasEffectiveProviderAPIKey(ctx context.Context, provider databas
 	return api.hasEffectiveCentralProviderAPIKey(ctx, provider, uuid.Nil)
 }
 
+func (api *API) hasEffectiveCentralProviderCredentials(
+	ctx context.Context,
+	provider database.ChatProvider,
+	excludeProviderID uuid.UUID,
+) bool {
+	if api.hasEffectiveCentralProviderAPIKey(ctx, provider, excludeProviderID) {
+		return true
+	}
+	return provider.CentralApiKeyEnabled &&
+		chatprovider.ProviderAllowsAmbientCredentials(provider.Provider)
+}
+
 func (api *API) hasEffectiveCentralProviderAPIKey(
 	ctx context.Context,
 	provider database.ChatProvider,
@@ -5588,9 +5600,6 @@ func (api *API) hasEffectiveCentralProviderAPIKey(
 		return false
 	}
 	if strings.TrimSpace(provider.APIKey) != "" {
-		return true
-	}
-	if chatprovider.ProviderAllowsAmbientCredentials(provider.Provider) {
 		return true
 	}
 	deploymentKeys := ChatProviderAPIKeysFromDeploymentValues(api.DeploymentValues)

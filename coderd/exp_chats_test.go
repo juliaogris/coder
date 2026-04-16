@@ -1830,9 +1830,19 @@ func TestCreateChatProvider(t *testing.T) {
 		require.Equal(t, "bedrock", provider.Provider)
 		require.Equal(t, "AWS Bedrock", provider.DisplayName)
 		require.True(t, provider.Enabled)
-		require.True(t, provider.HasAPIKey)
+		require.False(t, provider.HasAPIKey)
 		require.True(t, provider.CentralAPIKeyEnabled)
 		require.Equal(t, codersdk.ChatProviderConfigSourceDatabase, provider.Source)
+
+		providers, err := client.ListChatProviders(ctx)
+		require.NoError(t, err)
+		for _, listed := range providers {
+			if listed.Provider == "bedrock" {
+				require.False(t, listed.HasAPIKey)
+				return
+			}
+		}
+		t.Fatal("bedrock provider not found")
 	})
 
 	t.Run("ReportsBedrockAmbientFallbackForUserConfigs", func(t *testing.T) {
@@ -1850,7 +1860,7 @@ func TestCreateChatProvider(t *testing.T) {
 			AllowCentralAPIKeyFallback: ptr.Ref(true),
 		})
 		require.NoError(t, err)
-		require.True(t, provider.HasAPIKey)
+		require.False(t, provider.HasAPIKey)
 
 		configs, err := client.ListUserChatProviderConfigs(ctx)
 		require.NoError(t, err)
@@ -2133,7 +2143,7 @@ func TestUpdateChatProvider(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, provider.ID, updated.ID)
 		require.Equal(t, "bedrock", updated.Provider)
-		require.True(t, updated.HasAPIKey)
+		require.False(t, updated.HasAPIKey)
 		require.True(t, updated.CentralAPIKeyEnabled)
 	})
 
