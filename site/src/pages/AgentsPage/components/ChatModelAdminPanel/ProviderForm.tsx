@@ -88,6 +88,7 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 		providerState.hasManagedAPIKey ? API_KEY_PLACEHOLDER : "",
 	);
 	const [apiKeyTouched, setApiKeyTouched] = useState(false);
+	const [apiKeyModified, setApiKeyModified] = useState(false);
 	const [baseURLValue, setBaseURLValue] = useState(initialValues.baseURL);
 	const [centralAPIKeyEnabled, setCentralAPIKeyEnabled] = useState(
 		initialValues.centralAPIKeyEnabled,
@@ -129,7 +130,7 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 	const isClearingBedrockAPIKey =
 		isBedrockProvider &&
 		providerState.hasManagedAPIKey &&
-		apiKeyTouched &&
+		apiKeyModified &&
 		effectiveApiKey === "";
 	const shouldSubmitAPIKey =
 		centralAPIKeyEnabled && (hasTypedAPIKey || isClearingBedrockAPIKey);
@@ -240,6 +241,7 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 		}
 
 		setApiKeyTouched(false);
+		setApiKeyModified(false);
 		setApiKey(API_KEY_PLACEHOLDER);
 	};
 
@@ -323,6 +325,7 @@ export const ProviderForm: FC<ProviderFormProps> = ({
 										onChange={(event) => {
 											setApiKey(event.target.value);
 											setApiKeyTouched(true);
+											setApiKeyModified(true);
 										}}
 										disabled={isDisabled}
 									/>
