@@ -194,7 +194,6 @@ func TestSubagentChatExcludesWorkspaceProvisioningTools(t *testing.T) {
 
 	ctx := testutil.Context(t, testutil.WaitLong)
 	deploymentValues := coderdtest.DeploymentValues(t)
-	deploymentValues.Experiments = []string{string(codersdk.ExperimentAgents)}
 	client := coderdtest.New(t, &coderdtest.Options{
 		DeploymentValues:         deploymentValues,
 		IncludeProvisionerDaemon: true,
@@ -359,7 +358,6 @@ func TestPlanModeSubagentChatExcludesAskUserQuestion(t *testing.T) {
 
 	ctx := testutil.Context(t, testutil.WaitLong)
 	deploymentValues := coderdtest.DeploymentValues(t)
-	deploymentValues.Experiments = []string{string(codersdk.ExperimentAgents)}
 	client := coderdtest.New(t, &coderdtest.Options{
 		DeploymentValues:         deploymentValues,
 		IncludeProvisionerDaemon: true,
@@ -3200,7 +3198,6 @@ func TestCreateWorkspaceTool_EndToEnd(t *testing.T) {
 
 	ctx := testutil.Context(t, testutil.WaitLong)
 	deploymentValues := coderdtest.DeploymentValues(t)
-	deploymentValues.Experiments = []string{string(codersdk.ExperimentAgents)}
 	client := coderdtest.New(t, &coderdtest.Options{
 		DeploymentValues:         deploymentValues,
 		IncludeProvisionerDaemon: true,
@@ -3381,7 +3378,6 @@ func TestStartWorkspaceTool_EndToEnd(t *testing.T) {
 
 	ctx := testutil.Context(t, testutil.WaitSuperLong)
 	deploymentValues := coderdtest.DeploymentValues(t)
-	deploymentValues.Experiments = []string{string(codersdk.ExperimentAgents)}
 	client := coderdtest.New(t, &coderdtest.Options{
 		DeploymentValues:         deploymentValues,
 		IncludeProvisionerDaemon: true,
@@ -6192,7 +6188,6 @@ func TestAgentContextFilesAndSkillsLoadedIntoChat(t *testing.T) {
 
 	ctx := testutil.Context(t, testutil.WaitSuperLong)
 	deploymentValues := coderdtest.DeploymentValues(t)
-	deploymentValues.Experiments = []string{string(codersdk.ExperimentAgents)}
 	client := coderdtest.New(t, &coderdtest.Options{
 		DeploymentValues:              deploymentValues,
 		IncludeProvisionerDaemon:      true,

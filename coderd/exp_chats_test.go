@@ -51,7 +51,6 @@ func chatDeploymentValues(t testing.TB) *codersdk.DeploymentValues {
 	t.Helper()
 
 	values := coderdtest.DeploymentValues(t)
-	values.Experiments = []string{string(codersdk.ExperimentAgents)}
 	return values
 }
 

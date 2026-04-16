@@ -1104,7 +1104,6 @@ func TestCreateChatNonDefaultOrg(t *testing.T) {
 		Options: &coderdtest.Options{
 			DeploymentValues: func() *codersdk.DeploymentValues {
 				v := coderdtest.DeploymentValues(t)
-				v.Experiments = []string{string(codersdk.ExperimentAgents)}
 				return v
 			}(),
 		},
@@ -1182,7 +1181,6 @@ func TestListChats_OrgAdminOnlySeesOwnChats(t *testing.T) {
 		Options: &coderdtest.Options{
 			DeploymentValues: func() *codersdk.DeploymentValues {
 				v := coderdtest.DeploymentValues(t)
-				v.Experiments = []string{string(codersdk.ExperimentAgents)}
 				return v
 			}(),
 		},
