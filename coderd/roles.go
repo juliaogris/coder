@@ -122,15 +122,23 @@ func assignableRoles(actorRoles rbac.ExpandableRoles, roles []rbac.Role, customR
 	}
 
 	for _, role := range customRoles {
-		canAssign := rbac.CanAssignRole(actorRoles, rbac.CustomSiteRole())
-		if role.RoleIdentifier().IsOrgRole() {
+		var canAssign bool
+		switch {
+		case role.IsSystem:
+			// System roles (e.g. agents-access) have their own entry
+			// in RoleAssignmentPermissions, so check the actual role
+			// identifier rather than the generic custom-organization-role.
+			canAssign = rbac.CanAssignRole(actorRoles, role.RoleIdentifier())
+		case role.RoleIdentifier().IsOrgRole():
 			canAssign = rbac.CanAssignRole(actorRoles, rbac.CustomOrganizationRole(role.OrganizationID.UUID))
+		default:
+			canAssign = rbac.CanAssignRole(actorRoles, rbac.CustomSiteRole())
 		}
 
 		assignable = append(assignable, codersdk.AssignableRoles{
 			Role:       db2sdk.Role(role),
 			Assignable: canAssign,
-			BuiltIn:    false,
+			BuiltIn:    role.IsSystem,
 		})
 	}
 	return assignable

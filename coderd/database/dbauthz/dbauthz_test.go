@@ -612,7 +612,7 @@ func (s *MethodTestSuite) TestChats() {
 			TotalOutputTokens: 89,
 		}}
 		dbm.EXPECT().GetChatCostPerChat(gomock.Any(), arg).Return(rows, nil).AnyTimes()
-		check.Args(arg).Asserts(rbac.ResourceChat.WithOwner(arg.OwnerID.String()), policy.ActionRead).Returns(rows)
+		check.Args(arg).Asserts().Returns(rows)
 	}))
 	s.Run("GetChatCostPerModel", s.Mocked(func(dbm *dbmock.MockStore, _ *gofakeit.Faker, check *expects) {
 		arg := database.GetChatCostPerModelParams{
@@ -631,7 +631,7 @@ func (s *MethodTestSuite) TestChats() {
 			TotalOutputTokens: 233,
 		}}
 		dbm.EXPECT().GetChatCostPerModel(gomock.Any(), arg).Return(rows, nil).AnyTimes()
-		check.Args(arg).Asserts(rbac.ResourceChat.WithOwner(arg.OwnerID.String()), policy.ActionRead).Returns(rows)
+		check.Args(arg).Asserts().Returns(rows)
 	}))
 	s.Run("GetChatCostPerUser", s.Mocked(func(dbm *dbmock.MockStore, _ *gofakeit.Faker, check *expects) {
 		arg := database.GetChatCostPerUserParams{
@@ -670,7 +670,7 @@ func (s *MethodTestSuite) TestChats() {
 			TotalOutputTokens:    800,
 		}
 		dbm.EXPECT().GetChatCostSummary(gomock.Any(), arg).Return(row, nil).AnyTimes()
-		check.Args(arg).Asserts(rbac.ResourceChat.WithOwner(arg.OwnerID.String()), policy.ActionRead).Returns(row)
+		check.Args(arg).Asserts().Returns(row)
 	}))
 	s.Run("CountEnabledModelsWithoutPricing", s.Mocked(func(dbm *dbmock.MockStore, _ *gofakeit.Faker, check *expects) {
 		dbm.EXPECT().CountEnabledModelsWithoutPricing(gomock.Any()).Return(int64(3), nil).AnyTimes()
@@ -789,7 +789,7 @@ func (s *MethodTestSuite) TestChats() {
 	s.Run("GetDefaultChatModelConfig", s.Mocked(func(dbm *dbmock.MockStore, faker *gofakeit.Faker, check *expects) {
 		config := testutil.Fake(s.T(), faker, database.ChatModelConfig{})
 		dbm.EXPECT().GetDefaultChatModelConfig(gomock.Any()).Return(config, nil).AnyTimes()
-		check.Asserts(rbac.ResourceChat.WithOwner(testActorID.String()), policy.ActionRead).Returns(config)
+		check.Asserts(rbac.ResourceDeploymentConfig, policy.ActionRead).Returns(config)
 	}))
 	s.Run("GetChatModelConfigs", s.Mocked(func(dbm *dbmock.MockStore, faker *gofakeit.Faker, check *expects) {
 		configA := testutil.Fake(s.T(), faker, database.ChatModelConfig{})

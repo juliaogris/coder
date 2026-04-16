@@ -505,6 +505,10 @@ func (api *API) postChats(rw http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// NOTE: This authorize check is intentionally placed after request
+	// parsing because we need req.OrganizationID to scope the RBAC check
+	// to the correct org. The request body is bounded by MaxBytesReader
+	// above, limiting the cost of parsing before rejection.
 	if !api.Authorize(r, policy.ActionCreate, rbac.ResourceChat.WithOwner(apiKey.UserID.String()).InOrg(req.OrganizationID)) {
 		httpapi.Forbidden(rw)
 		return
@@ -4091,6 +4095,9 @@ func (api *API) postChatFile(rw http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// NOTE: This authorize check is intentionally placed after query
+	// parameter parsing because we need orgID to scope the RBAC check
+	// to the correct org.
 	if !api.Authorize(r, policy.ActionCreate, rbac.ResourceChat.WithOwner(apiKey.UserID.String()).InOrg(orgID)) {
 		httpapi.Forbidden(rw)
 		return

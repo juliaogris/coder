@@ -2558,15 +2558,19 @@ func (q *querier) GetChatByIDForUpdate(ctx context.Context, id uuid.UUID) (datab
 }
 
 func (q *querier) GetChatCostPerChat(ctx context.Context, arg database.GetChatCostPerChatParams) ([]database.GetChatCostPerChatRow, error) {
-	if err := q.authorizeContext(ctx, policy.ActionRead, rbac.ResourceChat.WithOwner(arg.OwnerID.String())); err != nil {
-		return nil, err
+	// The handler layer already enforces cross-user authorization.
+	// We only require an authenticated actor here so unauthenticated calls fail closed.
+	if _, ok := ActorFromContext(ctx); !ok {
+		return nil, ErrNoActor
 	}
 	return q.db.GetChatCostPerChat(ctx, arg)
 }
 
 func (q *querier) GetChatCostPerModel(ctx context.Context, arg database.GetChatCostPerModelParams) ([]database.GetChatCostPerModelRow, error) {
-	if err := q.authorizeContext(ctx, policy.ActionRead, rbac.ResourceChat.WithOwner(arg.OwnerID.String())); err != nil {
-		return nil, err
+	// The handler layer already enforces cross-user authorization.
+	// We only require an authenticated actor here so unauthenticated calls fail closed.
+	if _, ok := ActorFromContext(ctx); !ok {
+		return nil, ErrNoActor
 	}
 	return q.db.GetChatCostPerModel(ctx, arg)
 }
@@ -2579,8 +2583,10 @@ func (q *querier) GetChatCostPerUser(ctx context.Context, arg database.GetChatCo
 }
 
 func (q *querier) GetChatCostSummary(ctx context.Context, arg database.GetChatCostSummaryParams) (database.GetChatCostSummaryRow, error) {
-	if err := q.authorizeContext(ctx, policy.ActionRead, rbac.ResourceChat.WithOwner(arg.OwnerID.String())); err != nil {
-		return database.GetChatCostSummaryRow{}, err
+	// The handler layer already enforces cross-user authorization.
+	// We only require an authenticated actor here so unauthenticated calls fail closed.
+	if _, ok := ActorFromContext(ctx); !ok {
+		return database.GetChatCostSummaryRow{}, ErrNoActor
 	}
 	return q.db.GetChatCostSummary(ctx, arg)
 }
@@ -2995,15 +3001,10 @@ func (q *querier) GetDERPMeshKey(ctx context.Context) (string, error) {
 }
 
 func (q *querier) GetDefaultChatModelConfig(ctx context.Context) (database.ChatModelConfig, error) {
-	// Any user who can read chat resources can read the default
-	// model config, since model resolution is required to create
-	// a chat. This avoids gating on ResourceDeploymentConfig
-	// which regular members lack.
-	act, ok := ActorFromContext(ctx)
-	if !ok {
-		return database.ChatModelConfig{}, ErrNoActor
-	}
-	if err := q.authorizeContext(ctx, policy.ActionRead, rbac.ResourceChat.WithOwner(act.ID)); err != nil {
+	// Reading the default model config is a deployment-level operation,
+	// consistent with GetChatModelConfigByID, GetChatModelConfigs, and
+	// GetChatProviders which all gate on ResourceDeploymentConfig.
+	if err := q.authorizeContext(ctx, policy.ActionRead, rbac.ResourceDeploymentConfig); err != nil {
 		return database.ChatModelConfig{}, err
 	}
 	return q.db.GetDefaultChatModelConfig(ctx)
