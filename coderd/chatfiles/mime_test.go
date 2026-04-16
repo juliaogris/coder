@@ -232,6 +232,17 @@ func TestPrepareRecordingArtifact(t *testing.T) {
 		require.ErrorContains(t, err, "recording artifact type mismatch")
 	})
 
+	t.Run("RejectsEmptyNormalizedName", func(t *testing.T) {
+		t.Parallel()
+
+		_, _, err := chatfiles.PrepareRecordingArtifact(
+			" \r\n\t ",
+			"video/mp4",
+			[]byte{0x00, 0x00, 0x00, 0x18, 'f', 't', 'y', 'p', 'm', 'p', '4', '2', 0x00, 0x00, 0x00, 0x00, 'm', 'p', '4', '1', 'i', 's', 'o', 'm'},
+		)
+		require.ErrorIs(t, err, chatfiles.ErrStoredFileNameRequired)
+	})
+
 	t.Run("UnsupportedExpectedType", func(t *testing.T) {
 		t.Parallel()
 

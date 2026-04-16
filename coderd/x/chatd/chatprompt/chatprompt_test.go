@@ -57,7 +57,7 @@ func convertMessagesWithoutFiles(t *testing.T, messages []database.ChatMessage) 
 	return prompt
 }
 
-func TestConvertMessages_NormalizesAssistantToolCallInput(t *testing.T) {
+func TestConvertMessagesWithFiles_NormalizesAssistantToolCallInput(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {

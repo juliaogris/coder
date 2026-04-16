@@ -117,8 +117,9 @@ func PrepareStoredFile(name, detectName string, data []byte) (storedName, mediaT
 	return storedName, mediaType, nil
 }
 
-// PrepareRecordingArtifact normalizes the recording artifact name and verifies
-// that the bytes match the expected recording media type.
+// PrepareRecordingArtifact normalizes the recording artifact name, rejects
+// empty normalized names, and verifies that the bytes match the expected
+// recording media type.
 func PrepareRecordingArtifact(name, expectedMediaType string, data []byte) (storedName, mediaType string, err error) {
 	expectedMediaType = BaseMediaType(expectedMediaType)
 	if _, ok := recordingArtifactMediaTypes[expectedMediaType]; !ok {
@@ -126,6 +127,9 @@ func PrepareRecordingArtifact(name, expectedMediaType string, data []byte) (stor
 	}
 
 	storedName = NormalizeStoredFileName(name)
+	if storedName == "" {
+		return "", "", ErrStoredFileNameRequired
+	}
 	mediaType = DetectMediaType(data)
 	if mediaType != expectedMediaType {
 		return "", "", xerrors.Errorf("recording artifact type mismatch: expected %q, detected %q", expectedMediaType, mediaType)
