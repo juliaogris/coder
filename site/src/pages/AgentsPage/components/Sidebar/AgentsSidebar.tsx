@@ -38,6 +38,7 @@ import {
 	PauseIcon,
 	PinIcon,
 	PinOffIcon,
+	ServerIcon,
 	SettingsIcon,
 	ShieldIcon,
 	SquarePenIcon,
@@ -1302,18 +1303,18 @@ export const AgentsSidebar: FC<AgentsSidebarProps> = (props) => {
 									adminOnly
 								/>
 								<SettingsNavItem
-									icon={WalletIcon}
-									label="Spend"
-									active={sidebarView.section === "spend"}
-									to="/agents/settings/spend"
+									icon={ServerIcon}
+									label="MCP Servers"
+									active={sidebarView.section === "mcp-servers"}
+									to="/agents/settings/mcp-servers"
 									state={location.state}
 									adminOnly
 								/>
 								<SettingsNavItem
-									icon={WandSparklesIcon}
-									label="Insights"
-									active={sidebarView.section === "insights"}
-									to="/agents/settings/insights"
+									icon={WalletIcon}
+									label="Spend"
+									active={sidebarView.section === "spend"}
+									to="/agents/settings/spend"
 									state={location.state}
 									adminOnly
 								/>
