@@ -787,7 +787,7 @@ describe("mutation invalidation scope", () => {
 		}
 	});
 
-	it("editChatMessage invalidates only chat detail and messages", async () => {
+	it("editChatMessage invalidates only chat detail, not messages", async () => {
 		const queryClient = createTestQueryClient();
 		const chatId = "chat-1";
 		seedAllActiveQueries(queryClient, chatId);
@@ -797,20 +797,53 @@ describe("mutation invalidation scope", () => {
 
 		await new Promise((r) => setTimeout(r, 0));
 
-		// These two should still be invalidated — editing changes
-		// message content and potentially the chat's updated_at.
+		// Chat metadata should still be invalidated because editing
+		// changes the chat's updated_at.
 		const chatState = queryClient.getQueryState(chatKey(chatId));
 		expect(chatState?.isInvalidated, "chatKey should be invalidated").toBe(
 			true,
 		);
 
+		// Messages are NOT invalidated. The per-chat WebSocket handles
+		// post-edit message delivery, making REST invalidation
+		// unnecessary.
 		const messagesState = queryClient.getQueryState(chatMessagesKey(chatId));
 		expect(
 			messagesState?.isInvalidated,
-			"chatMessagesKey should be invalidated",
-		).toBe(true);
+			"chatMessagesKey should not be invalidated",
+		).not.toBe(true);
 	});
 
+	it("editChatMessage onError invalidates messages", async () => {
+		const queryClient = createTestQueryClient();
+		const chatId = "chat-1";
+		const messages = [3, 2, 1].map((id) => makeMsg(chatId, id));
+
+		queryClient.setQueryData<InfMessages>(chatMessagesKey(chatId), {
+			pages: [{ messages, queued_messages: [], has_more: false }],
+			pageParams: [undefined],
+		});
+
+		const mutation = editChatMessage(queryClient, chatId);
+		mutation.onError(
+			new Error("fail"),
+			{ messageId: 2, req: editReq },
+			{
+				previousData: {
+					pages: [{ messages, queued_messages: [], has_more: false }],
+					pageParams: [undefined],
+				},
+			},
+		);
+
+		await new Promise((r) => setTimeout(r, 0));
+
+		const messagesState = queryClient.getQueryState(chatMessagesKey(chatId));
+		expect(
+			messagesState?.isInvalidated,
+			"chatMessagesKey should be invalidated on error",
+		).toBe(true);
+	});
 	// Shared type for the infinite messages cache shape used by
 	// editChatMessage tests below.
 	type InfMessages = {
@@ -1041,7 +1074,7 @@ describe("mutation invalidation scope", () => {
 
 		const mutation = editChatMessage(queryClient, chatId);
 
-		// Pass undefined context — simulates onMutate throwing before
+		// Pass undefined context. This simulates onMutate throwing before
 		// it could return a snapshot.
 		mutation.onError(
 			new Error("fail"),
@@ -1049,11 +1082,17 @@ describe("mutation invalidation scope", () => {
 			undefined,
 		);
 
-		// Cache should be untouched — no crash, no corruption.
+		// Cache should be untouched: no crash, no corruption.
 		const data = queryClient.getQueryData<InfMessages>(chatMessagesKey(chatId));
 		expect(data?.pages[0]?.messages.map((m) => m.id)).toEqual([3, 2, 1]);
-	});
 
+		await new Promise((r) => setTimeout(r, 0));
+		const messagesState = queryClient.getQueryState(chatMessagesKey(chatId));
+		expect(
+			messagesState?.isInvalidated,
+			"chatMessagesKey should be invalidated even without context",
+		).toBe(true);
+	});
 	it("editChatMessage onMutate updates the first page and preserves older pages", async () => {
 		const queryClient = createTestQueryClient();
 		const chatId = "chat-1";
