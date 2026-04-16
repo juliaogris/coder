@@ -142,6 +142,42 @@ func TestPrepareStoredFile(t *testing.T) {
 		require.Equal(t, "application/json", mediaType)
 	})
 
+	t.Run("StripsControlCharactersAndTrimsExposedWhitespace", func(t *testing.T) {
+		t.Parallel()
+
+		name, mediaType, err := chatfiles.PrepareStoredFile(
+			"\x00 release\t notes.txt \x00",
+			"release-notes.txt",
+			[]byte("hello"),
+		)
+		require.NoError(t, err)
+		require.Equal(t, "release notes.txt", name)
+		require.Equal(t, "text/plain", mediaType)
+	})
+
+	t.Run("RejectsEmptyNormalizedName", func(t *testing.T) {
+		t.Parallel()
+
+		_, _, err := chatfiles.PrepareStoredFile(
+			" \r\n\t ",
+			"notes.txt",
+			[]byte("hello"),
+		)
+		require.ErrorIs(t, err, chatfiles.ErrStoredFileNameRequired)
+	})
+
+	t.Run("RejectsUnsupportedStoredFileType", func(t *testing.T) {
+		t.Parallel()
+
+		_, _, err := chatfiles.PrepareStoredFile(
+			"evil.svg",
+			"evil.svg",
+			[]byte(`<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>`),
+		)
+		require.ErrorIs(t, err, chatfiles.ErrUnsupportedStoredFileType)
+		require.ErrorContains(t, err, "image/svg+xml")
+	})
+
 	t.Run("TruncatesNamesAtRuneBoundaries", func(t *testing.T) {
 		t.Parallel()
 

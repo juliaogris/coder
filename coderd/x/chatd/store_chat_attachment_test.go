@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/coder/coder/v2/coderd/chatfiles"
 	"github.com/coder/coder/v2/coderd/database"
 	"github.com/coder/coder/v2/coderd/database/dbmock"
 	"github.com/coder/coder/v2/coderd/x/chatd/chattool"
@@ -98,6 +99,31 @@ func TestStoreChatAttachment_UsesDetectNameForClassification(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "payload.txt", attachment.Name)
 	require.Equal(t, "application/json", attachment.MediaType)
+}
+
+func TestStoreChatAttachment_RejectsUnsupportedStoredFileTypeBeforeDBWork(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	db := dbmock.NewMockStore(ctrl)
+	server := &Server{db: db}
+
+	chatSnapshot := database.Chat{
+		ID:          uuid.New(),
+		OwnerID:     uuid.New(),
+		WorkspaceID: uuid.NullUUID{UUID: uuid.New(), Valid: true},
+	}
+
+	attachment, err := server.storeChatAttachment(
+		context.Background(),
+		chatSnapshot,
+		"evil.svg",
+		"evil.svg",
+		[]byte(`<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>`),
+	)
+	require.ErrorIs(t, err, chatfiles.ErrUnsupportedStoredFileType)
+	require.ErrorContains(t, err, "image/svg+xml")
+	require.Equal(t, chattool.AttachmentMetadata{}, attachment)
 }
 
 func TestStoreChatAttachment_NoWorkspace(t *testing.T) {

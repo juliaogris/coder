@@ -39,18 +39,34 @@ func (p *Server) stopAndStoreRecording(
 ) recordingResult {
 	var result recordingResult
 
+	workspaceIDValue := ""
+	if workspaceID.Valid {
+		workspaceIDValue = workspaceID.UUID.String()
+	}
+	recordingWarnFields := []slog.Field{
+		slog.F("recording_id", recordingID),
+		slog.F("parent_chat_id", parentChatID.String()),
+		slog.F("workspace_id", workspaceIDValue),
+	}
+	warn := func(msg string, fields ...slog.Field) {
+		allFields := make([]slog.Field, 0, len(recordingWarnFields)+len(fields))
+		allFields = append(allFields, recordingWarnFields...)
+		allFields = append(allFields, fields...)
+		p.logger.Warn(ctx, msg, allFields...)
+	}
+
 	select {
 	case p.recordingSem <- struct{}{}:
 		defer func() { <-p.recordingSem }()
 	case <-ctx.Done():
-		p.logger.Warn(ctx, "context canceled waiting for recording semaphore", slog.Error(ctx.Err()))
+		warn("context canceled waiting for recording semaphore", slog.Error(ctx.Err()))
 		return result
 	}
 
 	resp, err := conn.StopDesktopRecording(ctx,
 		workspacesdk.StopDesktopRecordingRequest{RecordingID: recordingID})
 	if err != nil {
-		p.logger.Warn(ctx, "failed to stop desktop recording",
+		warn("failed to stop desktop recording",
 			slog.Error(err))
 		return result
 	}
@@ -58,20 +74,20 @@ func (p *Server) stopAndStoreRecording(
 
 	_, params, err := mime.ParseMediaType(resp.ContentType)
 	if err != nil {
-		p.logger.Warn(ctx, "failed to parse content type from recording response",
+		warn("failed to parse content type from recording response",
 			slog.F("content_type", resp.ContentType),
 			slog.Error(err))
 		return result
 	}
 	boundary := params["boundary"]
 	if boundary == "" {
-		p.logger.Warn(ctx, "missing boundary in recording response content type",
+		warn("missing boundary in recording response content type",
 			slog.F("content_type", resp.ContentType))
 		return result
 	}
 
 	if !workspaceID.Valid {
-		p.logger.Warn(ctx, "chat has no workspace, cannot store recording")
+		warn("chat has no workspace, cannot store recording")
 		return result
 	}
 
@@ -81,7 +97,7 @@ func (p *Server) stopAndStoreRecording(
 	chatdCtx := dbauthz.AsChatd(ctx)
 	ws, err := p.db.GetWorkspaceByID(chatdCtx, workspaceID.UUID)
 	if err != nil {
-		p.logger.Warn(ctx, "failed to resolve workspace for recording",
+		warn("failed to resolve workspace for recording",
 			slog.Error(err))
 		return result
 	}
@@ -100,7 +116,7 @@ func (p *Server) stopAndStoreRecording(
 	var videoData, thumbnailData []byte
 	for range maxParts {
 		if ctx.Err() != nil {
-			p.logger.Warn(ctx, "context canceled while reading recording parts", slog.Error(ctx.Err()))
+			warn("context canceled while reading recording parts", slog.Error(ctx.Err()))
 			break
 		}
 
@@ -109,7 +125,7 @@ func (p *Server) stopAndStoreRecording(
 			break
 		}
 		if err != nil {
-			p.logger.Warn(ctx, "error reading next multipart part", slog.Error(err))
+			warn("error reading next multipart part", slog.Error(err))
 			break
 		}
 
@@ -130,20 +146,20 @@ func (p *Server) stopAndStoreRecording(
 
 		data, err := io.ReadAll(io.LimitReader(part, maxSize+1))
 		if err != nil {
-			p.logger.Warn(ctx, "failed to read recording part data",
+			warn("failed to read recording part data",
 				slog.F("content_type", contentType),
 				slog.Error(err))
 			continue
 		}
 		if int64(len(data)) > maxSize {
-			p.logger.Warn(ctx, "recording part exceeds maximum size, skipping",
+			warn("recording part exceeds maximum size, skipping",
 				slog.F("content_type", contentType),
 				slog.F("size", len(data)),
 				slog.F("max_size", maxSize))
 			continue
 		}
 		if len(data) == 0 {
-			p.logger.Warn(ctx, "recording part is empty, skipping",
+			warn("recording part is empty, skipping",
 				slog.F("content_type", contentType))
 			continue
 		}
@@ -151,13 +167,13 @@ func (p *Server) stopAndStoreRecording(
 		switch contentType {
 		case "video/mp4":
 			if videoData != nil {
-				p.logger.Warn(ctx, "duplicate video/mp4 part in recording response, skipping")
+				warn("duplicate video/mp4 part in recording response, skipping")
 				continue
 			}
 			videoData = data
 		case "image/jpeg":
 			if thumbnailData != nil {
-				p.logger.Warn(ctx, "duplicate image/jpeg part in recording response, skipping")
+				warn("duplicate image/jpeg part in recording response, skipping")
 				continue
 			}
 			thumbnailData = data
@@ -179,7 +195,7 @@ func (p *Server) stopAndStoreRecording(
 			videoData,
 		)
 		if err != nil {
-			p.logger.Warn(ctx, "failed to store recording in database",
+			warn("failed to store recording in database",
 				slog.Error(err))
 		} else {
 			result.recordingFileID = attachment.FileID.String()
@@ -196,7 +212,7 @@ func (p *Server) stopAndStoreRecording(
 			thumbnailData,
 		)
 		if err != nil {
-			p.logger.Warn(ctx, "failed to store thumbnail in database",
+			warn("failed to store thumbnail in database",
 				slog.Error(err))
 		} else {
 			result.thumbnailFileID = attachment.FileID.String()

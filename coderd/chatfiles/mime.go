@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/gabriel-vasile/mimetype"
 	"golang.org/x/xerrors"
@@ -17,6 +18,14 @@ import (
 const MaxStoredFileNameBytes = 255
 
 var (
+	// ErrStoredFileNameRequired indicates that a durable file name is empty
+	// after normalization.
+	ErrStoredFileNameRequired = xerrors.New("stored file name is required")
+
+	// ErrUnsupportedStoredFileType indicates that classified file bytes do not
+	// map to an allowed durable file type.
+	ErrUnsupportedStoredFileType = xerrors.New("unsupported attachment type")
+
 	utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
 	allowedStoredMediaTypes = map[string]struct{}{
@@ -75,23 +84,35 @@ func IsInlineRenderableStoredMediaType(mediaType string) bool {
 	return mediaType != "application/pdf"
 }
 
-// NormalizeStoredFileName trims surrounding whitespace and truncates the name
-// to the durable storage byte limit without splitting UTF-8 runes.
+// NormalizeStoredFileName trims surrounding whitespace, strips control
+// characters, and truncates the name to the durable storage byte limit
+// without splitting UTF-8 runes.
 func NormalizeStoredFileName(name string) string {
-	return truncateUTF8Bytes(strings.TrimSpace(name), MaxStoredFileNameBytes)
+	name = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, name)
+	name = strings.TrimSpace(name)
+	return truncateUTF8Bytes(name, MaxStoredFileNameBytes)
 }
 
-// PrepareStoredFile normalizes the display name and classifies the file bytes
-// using detectName when provided, so callers can preserve subtype detection
-// even when the user-facing filename is overridden.
+// PrepareStoredFile normalizes the display name, rejects empty normalized
+// names, and classifies the file bytes using detectName when provided, so
+// callers can preserve subtype detection even when the user-facing filename is
+// overridden.
 func PrepareStoredFile(name, detectName string, data []byte) (storedName, mediaType string, err error) {
 	storedName = NormalizeStoredFileName(name)
+	if storedName == "" {
+		return "", "", ErrStoredFileNameRequired
+	}
 	if strings.TrimSpace(detectName) == "" {
 		detectName = storedName
 	}
 	mediaType = ClassifyStoredMediaType(detectName, data)
 	if !IsAllowedStoredMediaType(mediaType) {
-		return "", "", xerrors.Errorf("unsupported attachment type %q", mediaType)
+		return "", "", xerrors.Errorf("%w %q", ErrUnsupportedStoredFileType, mediaType)
 	}
 	return storedName, mediaType, nil
 }
