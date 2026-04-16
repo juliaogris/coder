@@ -947,10 +947,13 @@ export const ProviderFormBedrockClearBearerToken: Story = {
 		);
 
 		const apiKeyInput = await body.findByLabelText(/^API Key$/i);
+		const clearStoredTokenButton = body.getByRole("button", {
+			name: /Clear stored token/i,
+		});
 		const saveButton = body.getByRole("button", { name: "Save changes" });
 
 		await expect(apiKeyInput).toHaveValue("••••••••••••••••");
-		await userEvent.click(apiKeyInput);
+		await userEvent.click(clearStoredTokenButton);
 		await waitFor(() => {
 			expect(apiKeyInput).toHaveValue("");
 			expect(saveButton).toBeEnabled();
