@@ -199,6 +199,10 @@ func ScopedRoleOrgWorkspaceCreationBan(organizationID uuid.UUID) RoleIdentifier 
 	return RoleIdentifier{Name: RoleOrgWorkspaceCreationBan(), OrganizationID: organizationID}
 }
 
+func ScopedRoleAgentsAccess(organizationID uuid.UUID) RoleIdentifier {
+	return RoleIdentifier{Name: RoleAgentsAccess(), OrganizationID: organizationID}
+}
+
 func allPermsExcept(excepts ...Objecter) []Permission {
 	resources := AllResources()
 	var perms []Permission

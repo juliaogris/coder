@@ -493,7 +493,6 @@ func TestListRoles(t *testing.T) {
 				{Name: codersdk.RoleAuditor}:       false,
 				{Name: codersdk.RoleTemplateAdmin}: false,
 				{Name: codersdk.RoleUserAdmin}:     false,
-				{Name: codersdk.RoleAgentsAccess}:  false,
 			}),
 		},
 		{
@@ -501,12 +500,15 @@ func TestListRoles(t *testing.T) {
 			APICall: func(ctx context.Context) ([]codersdk.AssignableRoles, error) {
 				return member.ListOrganizationRoles(ctx, owner.OrganizationID)
 			},
-			ExpectedRoles: convertRoles(map[rbac.RoleIdentifier]bool{
+			ExpectedRoles: append(convertRoles(map[rbac.RoleIdentifier]bool{
 				{Name: codersdk.RoleOrganizationAdmin, OrganizationID: owner.OrganizationID}:                false,
 				{Name: codersdk.RoleOrganizationAuditor, OrganizationID: owner.OrganizationID}:              false,
 				{Name: codersdk.RoleOrganizationTemplateAdmin, OrganizationID: owner.OrganizationID}:        false,
 				{Name: codersdk.RoleOrganizationUserAdmin, OrganizationID: owner.OrganizationID}:            false,
 				{Name: codersdk.RoleOrganizationWorkspaceCreationBan, OrganizationID: owner.OrganizationID}: false,
+			}), codersdk.AssignableRoles{
+				Role:       codersdk.Role{Name: codersdk.RoleAgentsAccess},
+				Assignable: false,
 			}),
 		},
 		{
@@ -527,7 +529,6 @@ func TestListRoles(t *testing.T) {
 				{Name: codersdk.RoleAuditor}:       false,
 				{Name: codersdk.RoleTemplateAdmin}: false,
 				{Name: codersdk.RoleUserAdmin}:     false,
-				{Name: codersdk.RoleAgentsAccess}:  false,
 			}),
 		},
 		{
@@ -535,12 +536,15 @@ func TestListRoles(t *testing.T) {
 			APICall: func(ctx context.Context) ([]codersdk.AssignableRoles, error) {
 				return orgAdmin.ListOrganizationRoles(ctx, owner.OrganizationID)
 			},
-			ExpectedRoles: convertRoles(map[rbac.RoleIdentifier]bool{
+			ExpectedRoles: append(convertRoles(map[rbac.RoleIdentifier]bool{
 				{Name: codersdk.RoleOrganizationAdmin, OrganizationID: owner.OrganizationID}:                true,
 				{Name: codersdk.RoleOrganizationAuditor, OrganizationID: owner.OrganizationID}:              true,
 				{Name: codersdk.RoleOrganizationTemplateAdmin, OrganizationID: owner.OrganizationID}:        true,
 				{Name: codersdk.RoleOrganizationUserAdmin, OrganizationID: owner.OrganizationID}:            true,
 				{Name: codersdk.RoleOrganizationWorkspaceCreationBan, OrganizationID: owner.OrganizationID}: true,
+			}), codersdk.AssignableRoles{
+				Role:       codersdk.Role{Name: codersdk.RoleAgentsAccess},
+				Assignable: true,
 			}),
 		},
 		{
@@ -561,7 +565,6 @@ func TestListRoles(t *testing.T) {
 				{Name: codersdk.RoleAuditor}:       true,
 				{Name: codersdk.RoleTemplateAdmin}: true,
 				{Name: codersdk.RoleUserAdmin}:     true,
-				{Name: codersdk.RoleAgentsAccess}:  true,
 			}),
 		},
 		{
@@ -569,12 +572,15 @@ func TestListRoles(t *testing.T) {
 			APICall: func(ctx context.Context) ([]codersdk.AssignableRoles, error) {
 				return client.ListOrganizationRoles(ctx, owner.OrganizationID)
 			},
-			ExpectedRoles: convertRoles(map[rbac.RoleIdentifier]bool{
+			ExpectedRoles: append(convertRoles(map[rbac.RoleIdentifier]bool{
 				{Name: codersdk.RoleOrganizationAdmin, OrganizationID: owner.OrganizationID}:                true,
 				{Name: codersdk.RoleOrganizationAuditor, OrganizationID: owner.OrganizationID}:              true,
 				{Name: codersdk.RoleOrganizationTemplateAdmin, OrganizationID: owner.OrganizationID}:        true,
 				{Name: codersdk.RoleOrganizationUserAdmin, OrganizationID: owner.OrganizationID}:            true,
 				{Name: codersdk.RoleOrganizationWorkspaceCreationBan, OrganizationID: owner.OrganizationID}: true,
+			}), codersdk.AssignableRoles{
+				Role:       codersdk.Role{Name: codersdk.RoleAgentsAccess},
+				Assignable: true,
 			}),
 		},
 	}

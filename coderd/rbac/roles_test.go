@@ -210,7 +210,7 @@ func TestRolePermissions(t *testing.T) {
 				Roles: rbac.Roles{
 					memberRole,
 					{
-						Identifier: rbac.RoleIdentifier{Name: rbac.RoleAgentsAccess(), OrganizationID: orgID},
+						Identifier: rbac.ScopedRoleAgentsAccess(orgID),
 						Site:       []rbac.Permission{},
 						User:       []rbac.Permission{},
 						ByOrgID: map[string]rbac.OrgPermissions{

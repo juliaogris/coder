@@ -1139,7 +1139,7 @@ func TestCreateChatNonDefaultOrg(t *testing.T) {
 
 	// Create a member in the default org, then add them to the second org.
 	memberClientRaw, member := coderdtest.CreateAnotherUser(
-		t, client, firstUser.OrganizationID, rbac.RoleIdentifier{Name: rbac.RoleAgentsAccess(), OrganizationID: firstUser.OrganizationID},
+		t, client, firstUser.OrganizationID, rbac.ScopedRoleAgentsAccess(firstUser.OrganizationID),
 	)
 	_, err = client.PostOrganizationMember(ctx, secondOrg.ID, member.Username)
 	require.NoError(t, err)
@@ -1219,7 +1219,7 @@ func TestListChats_OrgAdminOnlySeesOwnChats(t *testing.T) {
 
 	// Create a regular member with agents access in the second org.
 	memberClientRaw, member := coderdtest.CreateAnotherUser(
-		t, client, firstUser.OrganizationID, rbac.RoleIdentifier{Name: rbac.RoleAgentsAccess(), OrganizationID: firstUser.OrganizationID},
+		t, client, firstUser.OrganizationID, rbac.ScopedRoleAgentsAccess(firstUser.OrganizationID),
 	)
 	_, err = client.PostOrganizationMember(ctx, secondOrg.ID, member.Username)
 	require.NoError(t, err)
@@ -1243,7 +1243,7 @@ func TestListChats_OrgAdminOnlySeesOwnChats(t *testing.T) {
 	// Create an org admin in the second org with agents access.
 	adminClientRaw, _ := coderdtest.CreateAnotherUser(
 		t, client, firstUser.OrganizationID,
-		rbac.ScopedRoleOrgAdmin(secondOrg.ID), rbac.RoleIdentifier{Name: rbac.RoleAgentsAccess(), OrganizationID: secondOrg.ID},
+		rbac.ScopedRoleOrgAdmin(secondOrg.ID), rbac.ScopedRoleAgentsAccess(secondOrg.ID),
 	)
 	adminExp := codersdk.NewExperimentalClient(adminClientRaw)
 
