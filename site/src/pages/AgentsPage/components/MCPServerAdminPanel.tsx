@@ -149,16 +149,8 @@ const MCPServerIcon: FC<{
 
 // ── Icon picker ──────────────────────────────────────────────────
 
-// Lazy-loaded emoji picker keeps the main bundle lean. The emoji-mart
-// library takes several seconds on cold load, so we warm it up in an
-// sr-only node below while the form mounts.
 const EmojiPicker = lazy(() => import("#/components/IconField/EmojiPicker"));
 
-// A shadcn-styled icon picker that matches the surrounding form inputs.
-// Functionally equivalent to #/components/IconField/IconField (URL input +
-// preview + emoji/icon picker) but built on InputGroup + Popover instead
-// of the legacy MUI TextField wrapper, so it inherits the h-9 / border /
-// focus ring used everywhere else in this panel.
 interface IconPickerFieldProps {
 	id?: string;
 	value: string;
@@ -196,9 +188,7 @@ const IconPickerField: FC<IconPickerFieldProps> = ({
 						<ExternalImage
 							alt=""
 							src={value}
-							// Hide the broken-image glyph while the user is
-							// mid-typing a URL. Restore visibility only when a
-							// real bitmap loads.
+							// Hide the broken-image glyph while the URL is incomplete.
 							onError={(e) => {
 								e.currentTarget.style.display = "none";
 							}}
@@ -258,13 +248,6 @@ const ServerList: FC<ServerListProps> = ({
 	sectionDescription,
 	sectionBadge,
 }) => {
-	const addButton = (
-		<Button size="sm" onClick={onAdd}>
-			<PlusIcon className="h-4 w-4" />
-			Add server
-		</Button>
-	);
-
 	return (
 		<>
 			<SectionHeader
@@ -274,7 +257,12 @@ const ServerList: FC<ServerListProps> = ({
 					"Configure external MCP servers that provide additional tools for Coder Agents."
 				}
 				badge={sectionBadge}
-				action={addButton}
+				action={
+					<Button size="sm" onClick={onAdd}>
+						<PlusIcon className="h-4 w-4" />
+						Add server
+					</Button>
+				}
 			/>
 
 			{servers.length === 0 ? (
@@ -282,7 +270,10 @@ const ServerList: FC<ServerListProps> = ({
 					<p className="m-0 text-sm text-content-secondary">
 						No MCP servers configured yet.
 					</p>
-					{addButton}
+					<Button size="sm" onClick={onAdd} aria-label="Add your first server">
+						<PlusIcon className="h-4 w-4" />
+						Add your first server
+					</Button>
 				</div>
 			) : (
 				<div>
@@ -605,7 +596,7 @@ const ServerForm: FC<ServerFormProps> = ({
 										}}
 										disabled={isDisabled}
 									/>
-								</Field>{" "}
+								</Field>
 								<div className="grid items-start gap-4 sm:grid-cols-[1fr_auto]">
 									<Field label="Server URL" htmlFor={`${formId}-url`} required>
 										<Input
@@ -698,7 +689,6 @@ const ServerForm: FC<ServerFormProps> = ({
 											handle the per-user authorization flow.
 										</p>
 										<div className="grid items-start gap-4 sm:grid-cols-2">
-											{" "}
 											<Field label="Client ID" htmlFor={`${formId}-oauth-id`}>
 												<Input
 													id={`${formId}-oauth-id`}
@@ -990,7 +980,6 @@ const ServerForm: FC<ServerFormProps> = ({
 								</div>
 
 								<div className="grid items-start gap-4 sm:grid-cols-2">
-									{" "}
 									<Field
 										label="Tool Allow List"
 										htmlFor={`${formId}-allow-list`}
@@ -1063,7 +1052,7 @@ const ServerForm: FC<ServerFormProps> = ({
 					open={confirmingDelete}
 					onOpenChange={(open) => !open && setConfirmingDelete(false)}
 				/>
-			)}{" "}
+			)}
 		</div>
 	);
 };
