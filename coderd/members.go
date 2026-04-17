@@ -113,10 +113,13 @@ func (api *API) postOrganizationMembers(rw http.ResponseWriter, r *http.Request)
 	}
 
 	// Resolve all users up-front so we can validate before inserting.
+	// Use the request context (not AsSystemRestricted) so that dbauthz
+	// enforces the caller has read permission on each target user,
+	// matching the authz behavior of the single-member endpoint which
+	// runs through ExtractUserParam.
 	users := make([]database.User, 0, len(req.UserIDs))
 	for _, uid := range req.UserIDs {
-		//nolint:gocritic // System needs to look up arbitrary users by ID.
-		user, err := api.Database.GetUserByID(dbauthz.AsSystemRestricted(ctx), uid)
+		user, err := api.Database.GetUserByID(ctx, uid)
 		if err != nil {
 			httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
 				Message: fmt.Sprintf("User %q not found.", uid),
