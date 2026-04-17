@@ -776,7 +776,7 @@ func findAssistantMessageForViewer(t *testing.T, msgs []codersdk.ChatMessageForV
 }
 
 // TestSubChatAccess_ViewerViaRootACL exercises the core promise of
-// migration 000471: a viewer granted ChatRoleRead on a root chat can
+// migration 000472: a viewer granted ChatRoleRead on a root chat can
 // reach the sub-chat through the HTTP API. The stored user_acl on the
 // sub-chat row is empty by design; the chats_with_acl view must supply
 // the root ACL for dbauthz to authorize the viewer.

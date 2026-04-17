@@ -32,7 +32,7 @@ func ExtractChatParam(db database.Store) func(http.Handler) http.Handler {
 
 			// GetChatByID reads from the chats_with_acl view, so the
 			// returned UserACL/GroupACL are already resolved to the root
-			// chat's ACL for sub-chats (migration 000471).
+			// chat's ACL for sub-chats (migration 000472).
 			chat, err := db.GetChatByID(ctx, chatID)
 			if httpapi.Is404Error(err) {
 				httpapi.ResourceNotFound(rw)

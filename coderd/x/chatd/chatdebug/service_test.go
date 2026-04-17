@@ -30,7 +30,7 @@ type testFixture struct {
 	svc   *chatdebug.Service
 	org   database.Organization
 	owner database.User
-	chat  database.Chat
+	chat  database.ChatTable
 	model database.ChatModelConfig
 }
 
@@ -898,7 +898,7 @@ func seedChat(
 	ctx context.Context,
 	t *testing.T,
 	db database.Store,
-) (database.Organization, database.User, database.Chat, database.ChatModelConfig) {
+) (database.Organization, database.User, database.ChatTable, database.ChatModelConfig) {
 	t.Helper()
 
 	org := dbgen.Organization(t, db, database.Organization{})
@@ -941,7 +941,7 @@ func insertChat(
 	orgID uuid.UUID,
 	ownerID uuid.UUID,
 	modelID uuid.UUID,
-) database.Chat {
+) database.ChatTable {
 	t.Helper()
 
 	chat, err := db.InsertChat(ctx, database.InsertChatParams{

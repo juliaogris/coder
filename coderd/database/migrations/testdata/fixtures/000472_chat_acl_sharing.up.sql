@@ -1,4 +1,4 @@
--- Fixture for migration 000471_chat_acl_sharing.
+-- Fixture for migration 000472_chat_acl_sharing.
 
 -- Default organization row (seeded by 000022) keeps the 'everyone' default;
 -- these two cover the other modes.

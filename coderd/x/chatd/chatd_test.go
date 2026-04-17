@@ -647,10 +647,10 @@ func TestExploreSubagentIsReadOnly(t *testing.T) {
 
 	allChats, err := db.GetChats(dbauthz.AsChatd(ctx), database.GetChatsParams{OwnerID: user.UserID})
 	require.NoError(t, err)
-	var exploreChildren []database.Chat
+	var exploreChildren []database.ChatTable
 	for _, candidate := range allChats {
-		if candidate.Chat.ParentChatID.Valid && candidate.Chat.Mode.Valid && candidate.Chat.Mode.ChatMode == database.ChatModeExplore {
-			exploreChildren = append(exploreChildren, candidate.Chat)
+		if candidate.ChatTable.ParentChatID.Valid && candidate.ChatTable.Mode.Valid && candidate.ChatTable.Mode.ChatMode == database.ChatModeExplore {
+			exploreChildren = append(exploreChildren, candidate.ChatTable)
 		}
 	}
 	require.Len(t, exploreChildren, 1)
