@@ -148,11 +148,19 @@ func insertInternalChatModelConfig(
 ) database.ChatModelConfig {
 	t.Helper()
 
-	modelConfig := dbgen.ChatModelConfig(t, db, database.ChatModelConfig{
-		Model:       model,
-		DisplayName: model,
-		Enabled:     enabled,
+	// Use raw insert instead of dbgen.ChatModelConfig because
+	// takeFirst treats false as zero, making it impossible to
+	// seed Enabled=false through the generator.
+	modelConfig, err := db.InsertChatModelConfig(dbauthz.AsSystemRestricted(context.Background()), database.InsertChatModelConfigParams{
+		Provider:             "openai",
+		Model:                model,
+		DisplayName:          model,
+		Enabled:              enabled,
+		ContextLimit:         128000,
+		CompressionThreshold: 70,
+		Options:              json.RawMessage(`{}`),
 	})
+	require.NoError(t, err, "insert chat model config")
 
 	return modelConfig
 }
