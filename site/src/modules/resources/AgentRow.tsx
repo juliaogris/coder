@@ -22,6 +22,7 @@ import type {
 	Workspace,
 	WorkspaceAgent,
 	WorkspaceAgentMetadata,
+	WorkspaceAgentScriptStatus,
 } from "#/api/typesGenerated";
 import { CheckIcon } from "#/components/AnimatedIcons/Check";
 import { ChevronDownIcon } from "#/components/AnimatedIcons/ChevronDown";
@@ -227,21 +228,26 @@ export const AgentRow: FC<AgentRowProps> = ({
 					log.source_id === logSource.id && (log.output?.length ?? 0) > 0,
 			);
 		})
-		.map((logSource) => ({
-			// Show the icon for the log source if it has one.
-			// In the startup script case, we show a bespoke play icon.
-			startIcon: logSource.icon ? (
-				<ExternalImage
-					src={logSource.icon}
-					alt=""
-					className="size-icon-xs shrink-0"
-				/>
-			) : logSource.display_name === STARTUP_SCRIPT_DISPLAY_NAME ? (
-				<PlayIcon className="size-icon-xs shrink-0" />
-			) : null,
-			title: logSource.display_name,
-			value: logSource.id,
-		}));
+		.map((logSource) => {
+			const script = agent.scripts.find((s) => s.log_source_id === logSource.id);
+			return {
+				// Show the icon for the log source if it has one.
+				// In the startup script case, we show a bespoke play icon.
+				startIcon: logSource.icon ? (
+					<ExternalImage
+						src={logSource.icon}
+						alt=""
+						className="size-icon-xs shrink-0"
+					/>
+				) : logSource.display_name === STARTUP_SCRIPT_DISPLAY_NAME ? (
+					<PlayIcon className="size-icon-xs shrink-0" />
+				) : null,
+				title: logSource.display_name,
+				value: logSource.id,
+				exitCode: script?.exit_code,
+				status: script?.status,
+			};
+		});
 	const startupScriptLogTab = sourceLogTabs.find(
 		(tab) => tab.title === STARTUP_SCRIPT_DISPLAY_NAME,
 	);
@@ -252,6 +258,8 @@ export const AgentRow: FC<AgentRowProps> = ({
 		startIcon?: ReactNode;
 		title: string;
 		value: string;
+		exitCode?: number;
+		status?: WorkspaceAgentScriptStatus;
 	}[] = [
 		{
 			title: "All Logs",
@@ -512,6 +520,16 @@ export const AgentRow: FC<AgentRowProps> = ({
 														<span className="whitespace-nowrap">
 															{tab.title}
 														</span>
+														{(tab.exitCode ||
+															(tab.status && tab.status !== "ok")) && (
+															<Badge
+																variant="warning"
+																size="xs"
+																className="ml-1.5"
+															>
+																<TriangleAlertIcon />
+															</Badge>
+														)}
 													</TabsTrigger>
 												))}
 												{overflowLogTabs.length > 0 && (
