@@ -1147,7 +1147,8 @@ func TestCreateChatNonDefaultOrg(t *testing.T) {
 		Roles: []string{rbac.RoleAgentsAccess()},
 	})
 	require.NoError(t, err)
-	memberClient := codersdk.NewExperimentalClient(memberClientRaw) // Create a chat in the non-default org.
+	memberClient := codersdk.NewExperimentalClient(memberClientRaw)
+	// Create a chat in the non-default org.
 	chat, err := memberClient.CreateChat(ctx, codersdk.CreateChatRequest{
 		OrganizationID: secondOrg.ID,
 		Content: []codersdk.ChatInputPart{
@@ -1227,7 +1228,8 @@ func TestListChats_OrgAdminOnlySeesOwnChats(t *testing.T) {
 		Roles: []string{rbac.RoleAgentsAccess()},
 	})
 	require.NoError(t, err)
-	memberExp := codersdk.NewExperimentalClient(memberClientRaw) // Member creates a chat in the second org.
+	memberExp := codersdk.NewExperimentalClient(memberClientRaw)
+	// Member creates a chat in the second org.
 	memberChat, err := memberExp.CreateChat(ctx, codersdk.CreateChatRequest{
 		OrganizationID: secondOrg.ID,
 		Content: []codersdk.ChatInputPart{

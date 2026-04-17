@@ -3001,11 +3001,14 @@ func (q *querier) GetDERPMeshKey(ctx context.Context) (string, error) {
 }
 
 func (q *querier) GetDefaultChatModelConfig(ctx context.Context) (database.ChatModelConfig, error) {
-	// Reading the default model config is a deployment-level operation,
-	// consistent with GetChatModelConfigByID, GetChatModelConfigs, and
-	// GetChatProviders which all gate on ResourceDeploymentConfig.
-	if err := q.authorizeContext(ctx, policy.ActionRead, rbac.ResourceDeploymentConfig); err != nil {
-		return database.ChatModelConfig{}, err
+	// Reading the default model config is needed for chat creation.
+	// This function has no org context to scope the check, and
+	// ResourceDeploymentConfig is too restrictive (admin-only).
+	// The handler layer gates chat creation via ActionCreate on
+	// the org-scoped ResourceChat.
+	// TODO(CODAGT-161): scope this check when org context is available.
+	if _, ok := ActorFromContext(ctx); !ok {
+		return database.ChatModelConfig{}, ErrNoActor
 	}
 	return q.db.GetDefaultChatModelConfig(ctx)
 }
