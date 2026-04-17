@@ -45,10 +45,10 @@ func (m *MockStore) EXPECT() *MockStoreMockRecorder {
 }
 
 // AcquireChats mocks base method.
-func (m *MockStore) AcquireChats(ctx context.Context, arg database.AcquireChatsParams) ([]database.Chat, error) {
+func (m *MockStore) AcquireChats(ctx context.Context, arg database.AcquireChatsParams) ([]database.ChatTable, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AcquireChats", ctx, arg)
-	ret0, _ := ret[0].([]database.Chat)
+	ret0, _ := ret[0].([]database.ChatTable)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -148,10 +148,10 @@ func (mr *MockStoreMockRecorder) AllUserIDs(ctx, includeSystem any) *gomock.Call
 }
 
 // ArchiveChatByID mocks base method.
-func (m *MockStore) ArchiveChatByID(ctx context.Context, id uuid.UUID) ([]database.Chat, error) {
+func (m *MockStore) ArchiveChatByID(ctx context.Context, id uuid.UUID) ([]database.ChatTable, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ArchiveChatByID", ctx, id)
-	ret0, _ := ret[0].([]database.Chat)
+	ret0, _ := ret[0].([]database.ChatTable)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1742,10 +1742,10 @@ func (mr *MockStoreMockRecorder) GetActiveAISeatCount(ctx any) *gomock.Call {
 }
 
 // GetActiveChatsByAgentID mocks base method.
-func (m *MockStore) GetActiveChatsByAgentID(ctx context.Context, agentID uuid.UUID) ([]database.Chat, error) {
+func (m *MockStore) GetActiveChatsByAgentID(ctx context.Context, agentID uuid.UUID) ([]database.ChatTable, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetActiveChatsByAgentID", ctx, agentID)
-	ret0, _ := ret[0].([]database.Chat)
+	ret0, _ := ret[0].([]database.ChatTable)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -2072,10 +2072,10 @@ func (mr *MockStoreMockRecorder) GetChatByID(ctx, id any) *gomock.Call {
 }
 
 // GetChatByIDForUpdate mocks base method.
-func (m *MockStore) GetChatByIDForUpdate(ctx context.Context, id uuid.UUID) (database.Chat, error) {
+func (m *MockStore) GetChatByIDForUpdate(ctx context.Context, id uuid.UUID) (database.ChatTable, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetChatByIDForUpdate", ctx, id)
-	ret0, _ := ret[0].(database.Chat)
+	ret0, _ := ret[0].(database.ChatTable)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -2657,10 +2657,10 @@ func (mr *MockStoreMockRecorder) GetChats(ctx, arg any) *gomock.Call {
 }
 
 // GetChatsByWorkspaceIDs mocks base method.
-func (m *MockStore) GetChatsByWorkspaceIDs(ctx context.Context, ids []uuid.UUID) ([]database.Chat, error) {
+func (m *MockStore) GetChatsByWorkspaceIDs(ctx context.Context, ids []uuid.UUID) ([]database.ChatTable, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetChatsByWorkspaceIDs", ctx, ids)
-	ret0, _ := ret[0].([]database.Chat)
+	ret0, _ := ret[0].([]database.ChatTable)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -4397,10 +4397,10 @@ func (mr *MockStoreMockRecorder) GetRuntimeConfig(ctx, key any) *gomock.Call {
 }
 
 // GetStaleChats mocks base method.
-func (m *MockStore) GetStaleChats(ctx context.Context, staleThreshold time.Time) ([]database.Chat, error) {
+func (m *MockStore) GetStaleChats(ctx context.Context, staleThreshold time.Time) ([]database.ChatTable, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetStaleChats", ctx, staleThreshold)
-	ret0, _ := ret[0].([]database.Chat)
+	ret0, _ := ret[0].([]database.ChatTable)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -6376,10 +6376,10 @@ func (mr *MockStoreMockRecorder) InsertAuditLog(ctx, arg any) *gomock.Call {
 }
 
 // InsertChat mocks base method.
-func (m *MockStore) InsertChat(ctx context.Context, arg database.InsertChatParams) (database.Chat, error) {
+func (m *MockStore) InsertChat(ctx context.Context, arg database.InsertChatParams) (database.ChatTable, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "InsertChat", ctx, arg)
-	ret0, _ := ret[0].(database.Chat)
+	ret0, _ := ret[0].(database.ChatTable)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -8049,10 +8049,10 @@ func (mr *MockStoreMockRecorder) TryAcquireLock(ctx, pgTryAdvisoryXactLock any) 
 }
 
 // UnarchiveChatByID mocks base method.
-func (m *MockStore) UnarchiveChatByID(ctx context.Context, id uuid.UUID) ([]database.Chat, error) {
+func (m *MockStore) UnarchiveChatByID(ctx context.Context, id uuid.UUID) ([]database.ChatTable, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UnarchiveChatByID", ctx, id)
-	ret0, _ := ret[0].([]database.Chat)
+	ret0, _ := ret[0].([]database.ChatTable)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -8163,10 +8163,10 @@ func (mr *MockStoreMockRecorder) UpdateChatACLByID(ctx, arg any) *gomock.Call {
 }
 
 // UpdateChatBuildAgentBinding mocks base method.
-func (m *MockStore) UpdateChatBuildAgentBinding(ctx context.Context, arg database.UpdateChatBuildAgentBindingParams) (database.Chat, error) {
+func (m *MockStore) UpdateChatBuildAgentBinding(ctx context.Context, arg database.UpdateChatBuildAgentBindingParams) (database.ChatTable, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateChatBuildAgentBinding", ctx, arg)
-	ret0, _ := ret[0].(database.Chat)
+	ret0, _ := ret[0].(database.ChatTable)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -8178,10 +8178,10 @@ func (mr *MockStoreMockRecorder) UpdateChatBuildAgentBinding(ctx, arg any) *gomo
 }
 
 // UpdateChatByID mocks base method.
-func (m *MockStore) UpdateChatByID(ctx context.Context, arg database.UpdateChatByIDParams) (database.Chat, error) {
+func (m *MockStore) UpdateChatByID(ctx context.Context, arg database.UpdateChatByIDParams) (database.ChatTable, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateChatByID", ctx, arg)
-	ret0, _ := ret[0].(database.Chat)
+	ret0, _ := ret[0].(database.ChatTable)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -8238,10 +8238,10 @@ func (mr *MockStoreMockRecorder) UpdateChatHeartbeats(ctx, arg any) *gomock.Call
 }
 
 // UpdateChatLabelsByID mocks base method.
-func (m *MockStore) UpdateChatLabelsByID(ctx context.Context, arg database.UpdateChatLabelsByIDParams) (database.Chat, error) {
+func (m *MockStore) UpdateChatLabelsByID(ctx context.Context, arg database.UpdateChatLabelsByIDParams) (database.ChatTable, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateChatLabelsByID", ctx, arg)
-	ret0, _ := ret[0].(database.Chat)
+	ret0, _ := ret[0].(database.ChatTable)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -8253,10 +8253,10 @@ func (mr *MockStoreMockRecorder) UpdateChatLabelsByID(ctx, arg any) *gomock.Call
 }
 
 // UpdateChatLastInjectedContext mocks base method.
-func (m *MockStore) UpdateChatLastInjectedContext(ctx context.Context, arg database.UpdateChatLastInjectedContextParams) (database.Chat, error) {
+func (m *MockStore) UpdateChatLastInjectedContext(ctx context.Context, arg database.UpdateChatLastInjectedContextParams) (database.ChatTable, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateChatLastInjectedContext", ctx, arg)
-	ret0, _ := ret[0].(database.Chat)
+	ret0, _ := ret[0].(database.ChatTable)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -8268,10 +8268,10 @@ func (mr *MockStoreMockRecorder) UpdateChatLastInjectedContext(ctx, arg any) *go
 }
 
 // UpdateChatLastModelConfigByID mocks base method.
-func (m *MockStore) UpdateChatLastModelConfigByID(ctx context.Context, arg database.UpdateChatLastModelConfigByIDParams) (database.Chat, error) {
+func (m *MockStore) UpdateChatLastModelConfigByID(ctx context.Context, arg database.UpdateChatLastModelConfigByIDParams) (database.ChatTable, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateChatLastModelConfigByID", ctx, arg)
-	ret0, _ := ret[0].(database.Chat)
+	ret0, _ := ret[0].(database.ChatTable)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -8297,10 +8297,10 @@ func (mr *MockStoreMockRecorder) UpdateChatLastReadMessageID(ctx, arg any) *gomo
 }
 
 // UpdateChatMCPServerIDs mocks base method.
-func (m *MockStore) UpdateChatMCPServerIDs(ctx context.Context, arg database.UpdateChatMCPServerIDsParams) (database.Chat, error) {
+func (m *MockStore) UpdateChatMCPServerIDs(ctx context.Context, arg database.UpdateChatMCPServerIDsParams) (database.ChatTable, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateChatMCPServerIDs", ctx, arg)
-	ret0, _ := ret[0].(database.Chat)
+	ret0, _ := ret[0].(database.ChatTable)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -8356,10 +8356,10 @@ func (mr *MockStoreMockRecorder) UpdateChatPinOrder(ctx, arg any) *gomock.Call {
 }
 
 // UpdateChatPlanModeByID mocks base method.
-func (m *MockStore) UpdateChatPlanModeByID(ctx context.Context, arg database.UpdateChatPlanModeByIDParams) (database.Chat, error) {
+func (m *MockStore) UpdateChatPlanModeByID(ctx context.Context, arg database.UpdateChatPlanModeByIDParams) (database.ChatTable, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateChatPlanModeByID", ctx, arg)
-	ret0, _ := ret[0].(database.Chat)
+	ret0, _ := ret[0].(database.ChatTable)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -8386,10 +8386,10 @@ func (mr *MockStoreMockRecorder) UpdateChatProvider(ctx, arg any) *gomock.Call {
 }
 
 // UpdateChatStatus mocks base method.
-func (m *MockStore) UpdateChatStatus(ctx context.Context, arg database.UpdateChatStatusParams) (database.Chat, error) {
+func (m *MockStore) UpdateChatStatus(ctx context.Context, arg database.UpdateChatStatusParams) (database.ChatTable, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateChatStatus", ctx, arg)
-	ret0, _ := ret[0].(database.Chat)
+	ret0, _ := ret[0].(database.ChatTable)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -8401,10 +8401,10 @@ func (mr *MockStoreMockRecorder) UpdateChatStatus(ctx, arg any) *gomock.Call {
 }
 
 // UpdateChatStatusPreserveUpdatedAt mocks base method.
-func (m *MockStore) UpdateChatStatusPreserveUpdatedAt(ctx context.Context, arg database.UpdateChatStatusPreserveUpdatedAtParams) (database.Chat, error) {
+func (m *MockStore) UpdateChatStatusPreserveUpdatedAt(ctx context.Context, arg database.UpdateChatStatusPreserveUpdatedAtParams) (database.ChatTable, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateChatStatusPreserveUpdatedAt", ctx, arg)
-	ret0, _ := ret[0].(database.Chat)
+	ret0, _ := ret[0].(database.ChatTable)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -8416,10 +8416,10 @@ func (mr *MockStoreMockRecorder) UpdateChatStatusPreserveUpdatedAt(ctx, arg any)
 }
 
 // UpdateChatWorkspaceBinding mocks base method.
-func (m *MockStore) UpdateChatWorkspaceBinding(ctx context.Context, arg database.UpdateChatWorkspaceBindingParams) (database.Chat, error) {
+func (m *MockStore) UpdateChatWorkspaceBinding(ctx context.Context, arg database.UpdateChatWorkspaceBindingParams) (database.ChatTable, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateChatWorkspaceBinding", ctx, arg)
-	ret0, _ := ret[0].(database.Chat)
+	ret0, _ := ret[0].(database.ChatTable)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

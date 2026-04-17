@@ -188,6 +188,8 @@ sql:
           workspaces_expanded: Workspace
           task: TaskTable
           tasks_with_status: Task
+          chat: ChatTable
+          chats_with_acl: Chat
           template_version: TemplateVersionTable
           template_version_with_user: TemplateVersion
           api_key: APIKey

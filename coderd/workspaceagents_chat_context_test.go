@@ -1042,7 +1042,7 @@ func createAgentChatContextChat(
 	})
 	require.NoError(t, err)
 
-	return chat
+	return chat.Chat()
 }
 
 func createAgentChatContextChildChat(
@@ -1071,7 +1071,7 @@ func createAgentChatContextChildChat(
 	})
 	require.NoError(t, err)
 
-	return chat
+	return chat.Chat()
 }
 
 func requireAgentChatContextParts(t testing.TB, raw json.RawMessage) []codersdk.ChatMessagePart {

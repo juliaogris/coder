@@ -156,7 +156,7 @@ func seedWaitingChat(
 		MCPServerIDs:      []uuid.UUID{},
 	})
 	require.NoError(t, err)
-	return chat
+	return chat.Chat()
 }
 
 func seedRemoteRunningChat(
@@ -173,7 +173,7 @@ func seedRemoteRunningChat(
 
 	chat := seedWaitingChat(ctx, t, db, orgID, user, model, title)
 	now := time.Now()
-	chat, err := db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
+	chatTable, err := db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
 		ID:          chat.ID,
 		Status:      database.ChatStatusRunning,
 		WorkerID:    uuid.NullUUID{UUID: workerID, Valid: true},
@@ -181,7 +181,7 @@ func seedRemoteRunningChat(
 		HeartbeatAt: sql.NullTime{Time: now, Valid: true},
 	})
 	require.NoError(t, err)
-	return chat
+	return chatTable.Chat()
 }
 
 func setOpenAIProviderBaseURL(

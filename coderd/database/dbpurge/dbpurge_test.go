@@ -1687,7 +1687,7 @@ func TestDeleteOldChatFiles(t *testing.T) {
 		}
 		_, err = rawDB.ExecContext(ctx, "UPDATE chats SET updated_at = $1 WHERE id = $2", updatedAt, chat.ID)
 		require.NoError(t, err)
-		return chat
+		return chat.Chat()
 	}
 	// setupChatDeps creates the common dependencies needed for
 	// chat-related tests: user, org, org member, provider, model config.

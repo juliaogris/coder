@@ -1327,7 +1327,7 @@ func TestGetAuthorizedChats(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, memberRows, 2)
 		for _, row := range memberRows {
-			require.Equal(t, member.ID, row.Chat.OwnerID, "member should only see own chats")
+			require.Equal(t, member.ID, row.ChatTable.OwnerID, "member should only see own chats")
 		}
 
 		// Owner should see at least the 5 pre-created chats (site-wide
@@ -1412,7 +1412,7 @@ func TestGetAuthorizedChats(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, memberRows, 2)
 		for _, row := range memberRows {
-			require.Equal(t, member.ID, row.Chat.OwnerID, "member should only see own chats")
+			require.Equal(t, member.ID, row.ChatTable.OwnerID, "member should only see own chats")
 		}
 
 		// As owner: should see at least the 5 pre-created chats.
@@ -1466,13 +1466,13 @@ func TestGetAuthorizedChats(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, page1, 2)
 		for _, row := range page1 {
-			require.Equal(t, paginationUser.ID, row.Chat.OwnerID, "paginated results must belong to pagination user")
+			require.Equal(t, paginationUser.ID, row.ChatTable.OwnerID, "paginated results must belong to pagination user")
 		}
 
 		// Fetch remaining pages and collect all chat IDs.
 		allIDs := make(map[uuid.UUID]struct{})
 		for _, row := range page1 {
-			allIDs[row.Chat.ID] = struct{}{}
+			allIDs[row.ChatTable.ID] = struct{}{}
 		}
 		offset := int32(2)
 		for {
@@ -1482,8 +1482,8 @@ func TestGetAuthorizedChats(t *testing.T) {
 			}, preparedMember)
 			require.NoError(t, err)
 			for _, row := range page {
-				require.Equal(t, paginationUser.ID, row.Chat.OwnerID, "paginated results must belong to pagination user")
-				allIDs[row.Chat.ID] = struct{}{}
+				require.Equal(t, paginationUser.ID, row.ChatTable.OwnerID, "paginated results must belong to pagination user")
+				allIDs[row.ChatTable.ID] = struct{}{}
 			}
 			if len(page) < 2 {
 				break
@@ -9908,7 +9908,7 @@ func TestInsertChatMessages(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		return store, ctx, user, chat, provider, modelConfigA
+		return store, ctx, user, chat.Chat(), provider, modelConfigA
 	}
 
 	insertMessage := func(t *testing.T, store database.Store, ctx context.Context, chatID, userID, modelConfigID uuid.UUID, content string) {
@@ -10082,7 +10082,7 @@ func TestGetChatMessagesForPromptByChatID(t *testing.T) {
 			Title:             "test-chat-" + uuid.NewString(),
 		})
 		require.NoError(t, err)
-		return chat
+		return chat.Chat()
 	}
 
 	insertMsg := func(
@@ -10468,7 +10468,7 @@ func TestGetPRInsights(t *testing.T) {
 			Title:             title,
 		})
 		require.NoError(t, err)
-		return chat
+		return chat.Chat()
 	}
 
 	// insertCostMessage inserts a single assistant message with the
@@ -10608,7 +10608,7 @@ func TestGetPRInsights(t *testing.T) {
 			RootChatID:        uuid.NullUUID{UUID: rootID, Valid: true},
 		})
 		require.NoError(t, err)
-		return chat
+		return chat.Chat()
 	}
 
 	t.Run("DuplicatePRUrl_CountedOnce", func(t *testing.T) {
@@ -11027,7 +11027,7 @@ func TestChatPinOrderQueries(t *testing.T) {
 			Title:             title,
 		})
 		require.NoError(t, err)
-		return chat
+		return chat.Chat()
 	}
 
 	requirePinOrders := func(t *testing.T, ctx context.Context, db database.Store, want map[uuid.UUID]int32) {
@@ -11357,7 +11357,7 @@ func TestChatLabels(t *testing.T) {
 
 		titles := make([]string, 0, len(results))
 		for _, c := range results {
-			titles = append(titles, c.Chat.Title)
+			titles = append(titles, c.ChatTable.Title)
 		}
 		require.Contains(t, titles, "filter-a")
 		require.Contains(t, titles, "filter-b")
@@ -11375,7 +11375,7 @@ func TestChatLabels(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.Len(t, results, 1)
-		require.Equal(t, "filter-a", results[0].Chat.Title)
+		require.Equal(t, "filter-a", results[0].ChatTable.Title)
 		// No filter — should return all chats for this owner.
 		allChats, err := db.GetChats(ctx, database.GetChatsParams{
 			OwnerID: owner.ID,
@@ -12439,7 +12439,7 @@ func TestChatHasUnread(t *testing.T) {
 		})
 		require.NoError(t, err)
 		for _, row := range rows {
-			if row.Chat.ID == chat.ID {
+			if row.ChatTable.ID == chat.ID {
 				return row.HasUnread
 			}
 		}

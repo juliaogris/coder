@@ -3741,7 +3741,7 @@ func TestPatchChat(t *testing.T) {
 			Title:             title,
 		})
 		require.NoError(t, err)
-		return db2sdk.Chat(dbChat, nil, nil)
+		return db2sdk.Chat(dbChat.Chat(), nil, nil)
 	}
 	t.Run("PlanMode", func(t *testing.T) {
 		t.Parallel()
@@ -8903,7 +8903,7 @@ func TestGetChatsByWorkspace(t *testing.T) {
 			WorkspaceID:       uuid.NullUUID{UUID: workspaceID, Valid: true},
 		})
 		require.NoError(t, err)
-		return chat
+		return chat.Chat()
 	}
 
 	t.Run("EmptyRequestReturnsEmptyMap", func(t *testing.T) {
@@ -9090,7 +9090,7 @@ func TestSubmitToolResults(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, database.ChatStatusRequiresAction, chat.Status)
 
-		return chat
+		return chat.Chat()
 	}
 
 	t.Run("Success", func(t *testing.T) {

@@ -80,7 +80,7 @@ func createComputerUseParentChild(
 
 	// Insert the parent chat directly via DB to avoid triggering
 	// the server's background processing.
-	parent, err := server.db.InsertChat(ctx, database.InsertChatParams{
+	parentTable, err := server.db.InsertChat(ctx, database.InsertChatParams{
 		OrganizationID:    org.ID,
 		OwnerID:           user.ID,
 		WorkspaceID:       uuid.NullUUID{UUID: workspace.ID, Valid: true},
@@ -91,11 +91,12 @@ func createComputerUseParentChild(
 		ClientType:        database.ChatClientTypeUi,
 	})
 	require.NoError(t, err)
+	parent = parentTable.Chat()
 
 	// Insert the child chat directly via DB to avoid triggering
 	// the server's background processing (which would try to run
 	// the chat without an LLM and get stuck).
-	child, err = server.db.InsertChat(ctx, database.InsertChatParams{
+	childTable, err := server.db.InsertChat(ctx, database.InsertChatParams{
 		OrganizationID:    org.ID,
 		OwnerID:           user.ID,
 		WorkspaceID:       uuid.NullUUID{UUID: workspace.ID, Valid: true},
@@ -109,7 +110,7 @@ func createComputerUseParentChild(
 		ClientType:        database.ChatClientTypeUi,
 	})
 	require.NoError(t, err)
-
+	child = childTable.Chat()
 	return parent, child
 }
 

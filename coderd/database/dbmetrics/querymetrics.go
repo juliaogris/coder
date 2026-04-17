@@ -104,7 +104,7 @@ func (m queryMetricsStore) DeleteOrganization(ctx context.Context, id uuid.UUID)
 	return r0
 }
 
-func (m queryMetricsStore) AcquireChats(ctx context.Context, arg database.AcquireChatsParams) ([]database.Chat, error) {
+func (m queryMetricsStore) AcquireChats(ctx context.Context, arg database.AcquireChatsParams) ([]database.ChatTable, error) {
 	start := time.Now()
 	r0, r1 := m.s.AcquireChats(ctx, arg)
 	m.queryLatencies.WithLabelValues("AcquireChats").Observe(time.Since(start).Seconds())
@@ -160,7 +160,7 @@ func (m queryMetricsStore) AllUserIDs(ctx context.Context, includeSystem bool) (
 	return r0, r1
 }
 
-func (m queryMetricsStore) ArchiveChatByID(ctx context.Context, id uuid.UUID) ([]database.Chat, error) {
+func (m queryMetricsStore) ArchiveChatByID(ctx context.Context, id uuid.UUID) ([]database.ChatTable, error) {
 	start := time.Now()
 	r0, r1 := m.s.ArchiveChatByID(ctx, id)
 	m.queryLatencies.WithLabelValues("ArchiveChatByID").Observe(time.Since(start).Seconds())
@@ -1008,7 +1008,7 @@ func (m queryMetricsStore) GetActiveAISeatCount(ctx context.Context) (int64, err
 	return r0, r1
 }
 
-func (m queryMetricsStore) GetActiveChatsByAgentID(ctx context.Context, agentID uuid.UUID) ([]database.Chat, error) {
+func (m queryMetricsStore) GetActiveChatsByAgentID(ctx context.Context, agentID uuid.UUID) ([]database.ChatTable, error) {
 	start := time.Now()
 	r0, r1 := m.s.GetActiveChatsByAgentID(ctx, agentID)
 	m.queryLatencies.WithLabelValues("GetActiveChatsByAgentID").Observe(time.Since(start).Seconds())
@@ -1128,7 +1128,7 @@ func (m queryMetricsStore) GetChatByID(ctx context.Context, id uuid.UUID) (datab
 	return r0, r1
 }
 
-func (m queryMetricsStore) GetChatByIDForUpdate(ctx context.Context, id uuid.UUID) (database.Chat, error) {
+func (m queryMetricsStore) GetChatByIDForUpdate(ctx context.Context, id uuid.UUID) (database.ChatTable, error) {
 	start := time.Now()
 	r0, r1 := m.s.GetChatByIDForUpdate(ctx, id)
 	m.queryLatencies.WithLabelValues("GetChatByIDForUpdate").Observe(time.Since(start).Seconds())
@@ -1440,7 +1440,7 @@ func (m queryMetricsStore) GetChats(ctx context.Context, arg database.GetChatsPa
 	return r0, r1
 }
 
-func (m queryMetricsStore) GetChatsByWorkspaceIDs(ctx context.Context, ids []uuid.UUID) ([]database.Chat, error) {
+func (m queryMetricsStore) GetChatsByWorkspaceIDs(ctx context.Context, ids []uuid.UUID) ([]database.ChatTable, error) {
 	start := time.Now()
 	r0, r1 := m.s.GetChatsByWorkspaceIDs(ctx, ids)
 	m.queryLatencies.WithLabelValues("GetChatsByWorkspaceIDs").Observe(time.Since(start).Seconds())
@@ -2368,7 +2368,7 @@ func (m queryMetricsStore) GetRuntimeConfig(ctx context.Context, key string) (st
 	return r0, r1
 }
 
-func (m queryMetricsStore) GetStaleChats(ctx context.Context, staleThreshold time.Time) ([]database.Chat, error) {
+func (m queryMetricsStore) GetStaleChats(ctx context.Context, staleThreshold time.Time) ([]database.ChatTable, error) {
 	start := time.Now()
 	r0, r1 := m.s.GetStaleChats(ctx, staleThreshold)
 	m.queryLatencies.WithLabelValues("GetStaleChats").Observe(time.Since(start).Seconds())
@@ -3400,7 +3400,7 @@ func (m queryMetricsStore) InsertAuditLog(ctx context.Context, arg database.Inse
 	return r0, r1
 }
 
-func (m queryMetricsStore) InsertChat(ctx context.Context, arg database.InsertChatParams) (database.Chat, error) {
+func (m queryMetricsStore) InsertChat(ctx context.Context, arg database.InsertChatParams) (database.ChatTable, error) {
 	start := time.Now()
 	r0, r1 := m.s.InsertChat(ctx, arg)
 	m.queryLatencies.WithLabelValues("InsertChat").Observe(time.Since(start).Seconds())
@@ -4248,7 +4248,7 @@ func (m queryMetricsStore) TryAcquireLock(ctx context.Context, pgTryAdvisoryXact
 	return r0, r1
 }
 
-func (m queryMetricsStore) UnarchiveChatByID(ctx context.Context, id uuid.UUID) ([]database.Chat, error) {
+func (m queryMetricsStore) UnarchiveChatByID(ctx context.Context, id uuid.UUID) ([]database.ChatTable, error) {
 	start := time.Now()
 	r0, r1 := m.s.UnarchiveChatByID(ctx, id)
 	m.queryLatencies.WithLabelValues("UnarchiveChatByID").Observe(time.Since(start).Seconds())
@@ -4312,7 +4312,7 @@ func (m queryMetricsStore) UpdateChatACLByID(ctx context.Context, arg database.U
 	return r0
 }
 
-func (m queryMetricsStore) UpdateChatBuildAgentBinding(ctx context.Context, arg database.UpdateChatBuildAgentBindingParams) (database.Chat, error) {
+func (m queryMetricsStore) UpdateChatBuildAgentBinding(ctx context.Context, arg database.UpdateChatBuildAgentBindingParams) (database.ChatTable, error) {
 	start := time.Now()
 	r0, r1 := m.s.UpdateChatBuildAgentBinding(ctx, arg)
 	m.queryLatencies.WithLabelValues("UpdateChatBuildAgentBinding").Observe(time.Since(start).Seconds())
@@ -4320,7 +4320,7 @@ func (m queryMetricsStore) UpdateChatBuildAgentBinding(ctx context.Context, arg 
 	return r0, r1
 }
 
-func (m queryMetricsStore) UpdateChatByID(ctx context.Context, arg database.UpdateChatByIDParams) (database.Chat, error) {
+func (m queryMetricsStore) UpdateChatByID(ctx context.Context, arg database.UpdateChatByIDParams) (database.ChatTable, error) {
 	start := time.Now()
 	r0, r1 := m.s.UpdateChatByID(ctx, arg)
 	m.queryLatencies.WithLabelValues("UpdateChatByID").Observe(time.Since(start).Seconds())
@@ -4352,7 +4352,7 @@ func (m queryMetricsStore) UpdateChatHeartbeats(ctx context.Context, arg databas
 	return r0, r1
 }
 
-func (m queryMetricsStore) UpdateChatLabelsByID(ctx context.Context, arg database.UpdateChatLabelsByIDParams) (database.Chat, error) {
+func (m queryMetricsStore) UpdateChatLabelsByID(ctx context.Context, arg database.UpdateChatLabelsByIDParams) (database.ChatTable, error) {
 	start := time.Now()
 	r0, r1 := m.s.UpdateChatLabelsByID(ctx, arg)
 	m.queryLatencies.WithLabelValues("UpdateChatLabelsByID").Observe(time.Since(start).Seconds())
@@ -4360,7 +4360,7 @@ func (m queryMetricsStore) UpdateChatLabelsByID(ctx context.Context, arg databas
 	return r0, r1
 }
 
-func (m queryMetricsStore) UpdateChatLastInjectedContext(ctx context.Context, arg database.UpdateChatLastInjectedContextParams) (database.Chat, error) {
+func (m queryMetricsStore) UpdateChatLastInjectedContext(ctx context.Context, arg database.UpdateChatLastInjectedContextParams) (database.ChatTable, error) {
 	start := time.Now()
 	r0, r1 := m.s.UpdateChatLastInjectedContext(ctx, arg)
 	m.queryLatencies.WithLabelValues("UpdateChatLastInjectedContext").Observe(time.Since(start).Seconds())
@@ -4368,7 +4368,7 @@ func (m queryMetricsStore) UpdateChatLastInjectedContext(ctx context.Context, ar
 	return r0, r1
 }
 
-func (m queryMetricsStore) UpdateChatLastModelConfigByID(ctx context.Context, arg database.UpdateChatLastModelConfigByIDParams) (database.Chat, error) {
+func (m queryMetricsStore) UpdateChatLastModelConfigByID(ctx context.Context, arg database.UpdateChatLastModelConfigByIDParams) (database.ChatTable, error) {
 	start := time.Now()
 	r0, r1 := m.s.UpdateChatLastModelConfigByID(ctx, arg)
 	m.queryLatencies.WithLabelValues("UpdateChatLastModelConfigByID").Observe(time.Since(start).Seconds())
@@ -4384,7 +4384,7 @@ func (m queryMetricsStore) UpdateChatLastReadMessageID(ctx context.Context, arg 
 	return r0
 }
 
-func (m queryMetricsStore) UpdateChatMCPServerIDs(ctx context.Context, arg database.UpdateChatMCPServerIDsParams) (database.Chat, error) {
+func (m queryMetricsStore) UpdateChatMCPServerIDs(ctx context.Context, arg database.UpdateChatMCPServerIDsParams) (database.ChatTable, error) {
 	start := time.Now()
 	r0, r1 := m.s.UpdateChatMCPServerIDs(ctx, arg)
 	m.queryLatencies.WithLabelValues("UpdateChatMCPServerIDs").Observe(time.Since(start).Seconds())
@@ -4416,7 +4416,7 @@ func (m queryMetricsStore) UpdateChatPinOrder(ctx context.Context, arg database.
 	return r0
 }
 
-func (m queryMetricsStore) UpdateChatPlanModeByID(ctx context.Context, arg database.UpdateChatPlanModeByIDParams) (database.Chat, error) {
+func (m queryMetricsStore) UpdateChatPlanModeByID(ctx context.Context, arg database.UpdateChatPlanModeByIDParams) (database.ChatTable, error) {
 	start := time.Now()
 	r0, r1 := m.s.UpdateChatPlanModeByID(ctx, arg)
 	m.queryLatencies.WithLabelValues("UpdateChatPlanModeByID").Observe(time.Since(start).Seconds())
@@ -4432,7 +4432,7 @@ func (m queryMetricsStore) UpdateChatProvider(ctx context.Context, arg database.
 	return r0, r1
 }
 
-func (m queryMetricsStore) UpdateChatStatus(ctx context.Context, arg database.UpdateChatStatusParams) (database.Chat, error) {
+func (m queryMetricsStore) UpdateChatStatus(ctx context.Context, arg database.UpdateChatStatusParams) (database.ChatTable, error) {
 	start := time.Now()
 	r0, r1 := m.s.UpdateChatStatus(ctx, arg)
 	m.queryLatencies.WithLabelValues("UpdateChatStatus").Observe(time.Since(start).Seconds())
@@ -4440,7 +4440,7 @@ func (m queryMetricsStore) UpdateChatStatus(ctx context.Context, arg database.Up
 	return r0, r1
 }
 
-func (m queryMetricsStore) UpdateChatStatusPreserveUpdatedAt(ctx context.Context, arg database.UpdateChatStatusPreserveUpdatedAtParams) (database.Chat, error) {
+func (m queryMetricsStore) UpdateChatStatusPreserveUpdatedAt(ctx context.Context, arg database.UpdateChatStatusPreserveUpdatedAtParams) (database.ChatTable, error) {
 	start := time.Now()
 	r0, r1 := m.s.UpdateChatStatusPreserveUpdatedAt(ctx, arg)
 	m.queryLatencies.WithLabelValues("UpdateChatStatusPreserveUpdatedAt").Observe(time.Since(start).Seconds())
@@ -4448,7 +4448,7 @@ func (m queryMetricsStore) UpdateChatStatusPreserveUpdatedAt(ctx context.Context
 	return r0, r1
 }
 
-func (m queryMetricsStore) UpdateChatWorkspaceBinding(ctx context.Context, arg database.UpdateChatWorkspaceBindingParams) (database.Chat, error) {
+func (m queryMetricsStore) UpdateChatWorkspaceBinding(ctx context.Context, arg database.UpdateChatWorkspaceBindingParams) (database.ChatTable, error) {
 	start := time.Now()
 	r0, r1 := m.s.UpdateChatWorkspaceBinding(ctx, arg)
 	m.queryLatencies.WithLabelValues("UpdateChatWorkspaceBinding").Observe(time.Since(start).Seconds())

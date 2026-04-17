@@ -4866,15 +4866,15 @@ type AcquireChatsParams struct {
 
 // Acquires up to @num_chats pending chats for processing. Uses SKIP LOCKED
 // to prevent multiple replicas from acquiring the same chat.
-func (q *sqlQuerier) AcquireChats(ctx context.Context, arg AcquireChatsParams) ([]Chat, error) {
+func (q *sqlQuerier) AcquireChats(ctx context.Context, arg AcquireChatsParams) ([]ChatTable, error) {
 	rows, err := q.db.QueryContext(ctx, acquireChats, arg.StartedAt, arg.WorkerID, arg.NumChats)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Chat
+	var items []ChatTable
 	for rows.Next() {
-		var i Chat
+		var i ChatTable
 		if err := rows.Scan(
 			&i.ID,
 			&i.OwnerID,
@@ -5050,15 +5050,15 @@ FROM chats
 ORDER BY (id = $1::uuid) DESC, created_at ASC, id ASC
 `
 
-func (q *sqlQuerier) ArchiveChatByID(ctx context.Context, id uuid.UUID) ([]Chat, error) {
+func (q *sqlQuerier) ArchiveChatByID(ctx context.Context, id uuid.UUID) ([]ChatTable, error) {
 	rows, err := q.db.QueryContext(ctx, archiveChatByID, id)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Chat
+	var items []ChatTable
 	for rows.Next() {
-		var i Chat
+		var i ChatTable
 		if err := rows.Scan(
 			&i.ID,
 			&i.OwnerID,
@@ -5264,15 +5264,15 @@ WHERE agent_id = $1::uuid
 ORDER BY updated_at DESC
 `
 
-func (q *sqlQuerier) GetActiveChatsByAgentID(ctx context.Context, agentID uuid.UUID) ([]Chat, error) {
+func (q *sqlQuerier) GetActiveChatsByAgentID(ctx context.Context, agentID uuid.UUID) ([]ChatTable, error) {
 	rows, err := q.db.QueryContext(ctx, getActiveChatsByAgentID, agentID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Chat
+	var items []ChatTable
 	for rows.Next() {
-		var i Chat
+		var i ChatTable
 		if err := rows.Scan(
 			&i.ID,
 			&i.OwnerID,
@@ -5343,11 +5343,20 @@ const getChatByID = `-- name: GetChatByID :one
 SELECT
     id, owner_id, workspace_id, title, status, worker_id, started_at, heartbeat_at, created_at, updated_at, parent_chat_id, root_chat_id, last_model_config_id, archived, last_error, mode, mcp_server_ids, labels, build_id, agent_id, pin_order, last_read_message_id, last_injected_context, dynamic_tools, organization_id, plan_mode, client_type, user_acl, group_acl
 FROM
-    chats
+    chats_with_acl AS chats
 WHERE
     id = $1::uuid
 `
 
+// Reads from the chats_with_acl view so Chat.RBACObject() authorizes
+// against the effective ACL. Sub-chats inherit the root chat's ACL via
+// COALESCE (migration 000471); roots and orphaned sub-chats fall back
+// to their own stored ACL. Reading the base chats table would leave
+// dbauthz checking empty user_acl/group_acl for every sub-chat and
+// denying shared viewers with a 404 on /chats/{sub}. The
+// `chats_with_acl AS chats` alias preserves the Chat row type so
+// downstream RBACObject() and callers continue to compile unchanged
+// (same pattern GetChats uses below).
 func (q *sqlQuerier) GetChatByID(ctx context.Context, id uuid.UUID) (Chat, error) {
 	row := q.db.QueryRowContext(ctx, getChatByID, id)
 	var i Chat
@@ -5389,9 +5398,9 @@ const getChatByIDForUpdate = `-- name: GetChatByIDForUpdate :one
 SELECT id, owner_id, workspace_id, title, status, worker_id, started_at, heartbeat_at, created_at, updated_at, parent_chat_id, root_chat_id, last_model_config_id, archived, last_error, mode, mcp_server_ids, labels, build_id, agent_id, pin_order, last_read_message_id, last_injected_context, dynamic_tools, organization_id, plan_mode, client_type, user_acl, group_acl FROM chats WHERE id = $1::uuid FOR UPDATE
 `
 
-func (q *sqlQuerier) GetChatByIDForUpdate(ctx context.Context, id uuid.UUID) (Chat, error) {
+func (q *sqlQuerier) GetChatByIDForUpdate(ctx context.Context, id uuid.UUID) (ChatTable, error) {
 	row := q.db.QueryRowContext(ctx, getChatByIDForUpdate, id)
-	var i Chat
+	var i ChatTable
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
@@ -6555,8 +6564,8 @@ type GetChatsParams struct {
 }
 
 type GetChatsRow struct {
-	Chat      Chat `db:"chat" json:"chat"`
-	HasUnread bool `db:"has_unread" json:"has_unread"`
+	ChatTable ChatTable `db:"chat_table" json:"chat_table"`
+	HasUnread bool      `db:"has_unread" json:"has_unread"`
 }
 
 func (q *sqlQuerier) GetChats(ctx context.Context, arg GetChatsParams) ([]GetChatsRow, error) {
@@ -6579,35 +6588,35 @@ func (q *sqlQuerier) GetChats(ctx context.Context, arg GetChatsParams) ([]GetCha
 	for rows.Next() {
 		var i GetChatsRow
 		if err := rows.Scan(
-			&i.Chat.ID,
-			&i.Chat.OwnerID,
-			&i.Chat.WorkspaceID,
-			&i.Chat.Title,
-			&i.Chat.Status,
-			&i.Chat.WorkerID,
-			&i.Chat.StartedAt,
-			&i.Chat.HeartbeatAt,
-			&i.Chat.CreatedAt,
-			&i.Chat.UpdatedAt,
-			&i.Chat.ParentChatID,
-			&i.Chat.RootChatID,
-			&i.Chat.LastModelConfigID,
-			&i.Chat.Archived,
-			&i.Chat.LastError,
-			&i.Chat.Mode,
-			pq.Array(&i.Chat.MCPServerIDs),
-			&i.Chat.Labels,
-			&i.Chat.BuildID,
-			&i.Chat.AgentID,
-			&i.Chat.PinOrder,
-			&i.Chat.LastReadMessageID,
-			&i.Chat.LastInjectedContext,
-			&i.Chat.DynamicTools,
-			&i.Chat.OrganizationID,
-			&i.Chat.PlanMode,
-			&i.Chat.ClientType,
-			&i.Chat.UserACL,
-			&i.Chat.GroupACL,
+			&i.ChatTable.ID,
+			&i.ChatTable.OwnerID,
+			&i.ChatTable.WorkspaceID,
+			&i.ChatTable.Title,
+			&i.ChatTable.Status,
+			&i.ChatTable.WorkerID,
+			&i.ChatTable.StartedAt,
+			&i.ChatTable.HeartbeatAt,
+			&i.ChatTable.CreatedAt,
+			&i.ChatTable.UpdatedAt,
+			&i.ChatTable.ParentChatID,
+			&i.ChatTable.RootChatID,
+			&i.ChatTable.LastModelConfigID,
+			&i.ChatTable.Archived,
+			&i.ChatTable.LastError,
+			&i.ChatTable.Mode,
+			pq.Array(&i.ChatTable.MCPServerIDs),
+			&i.ChatTable.Labels,
+			&i.ChatTable.BuildID,
+			&i.ChatTable.AgentID,
+			&i.ChatTable.PinOrder,
+			&i.ChatTable.LastReadMessageID,
+			&i.ChatTable.LastInjectedContext,
+			&i.ChatTable.DynamicTools,
+			&i.ChatTable.OrganizationID,
+			&i.ChatTable.PlanMode,
+			&i.ChatTable.ClientType,
+			&i.ChatTable.UserACL,
+			&i.ChatTable.GroupACL,
 			&i.HasUnread,
 		); err != nil {
 			return nil, err
@@ -6631,15 +6640,15 @@ WHERE archived = false
 ORDER BY workspace_id, updated_at DESC
 `
 
-func (q *sqlQuerier) GetChatsByWorkspaceIDs(ctx context.Context, ids []uuid.UUID) ([]Chat, error) {
+func (q *sqlQuerier) GetChatsByWorkspaceIDs(ctx context.Context, ids []uuid.UUID) ([]ChatTable, error) {
 	rows, err := q.db.QueryContext(ctx, getChatsByWorkspaceIDs, pq.Array(ids))
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Chat
+	var items []ChatTable
 	for rows.Next() {
-		var i Chat
+		var i ChatTable
 		if err := rows.Scan(
 			&i.ID,
 			&i.OwnerID,
@@ -6813,15 +6822,15 @@ WHERE
 //  1. Running chats whose heartbeat has expired (worker crash).
 //  2. Chats awaiting client action (requires_action) past the
 //     timeout threshold (client disappeared).
-func (q *sqlQuerier) GetStaleChats(ctx context.Context, staleThreshold time.Time) ([]Chat, error) {
+func (q *sqlQuerier) GetStaleChats(ctx context.Context, staleThreshold time.Time) ([]ChatTable, error) {
 	rows, err := q.db.QueryContext(ctx, getStaleChats, staleThreshold)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Chat
+	var items []ChatTable
 	for rows.Next() {
-		var i Chat
+		var i ChatTable
 		if err := rows.Scan(
 			&i.ID,
 			&i.OwnerID,
@@ -6987,7 +6996,7 @@ type InsertChatParams struct {
 	ClientType        ChatClientType        `db:"client_type" json:"client_type"`
 }
 
-func (q *sqlQuerier) InsertChat(ctx context.Context, arg InsertChatParams) (Chat, error) {
+func (q *sqlQuerier) InsertChat(ctx context.Context, arg InsertChatParams) (ChatTable, error) {
 	row := q.db.QueryRowContext(ctx, insertChat,
 		arg.OrganizationID,
 		arg.OwnerID,
@@ -7006,7 +7015,7 @@ func (q *sqlQuerier) InsertChat(ctx context.Context, arg InsertChatParams) (Chat
 		arg.DynamicTools,
 		arg.ClientType,
 	)
-	var i Chat
+	var i ChatTable
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
@@ -7576,15 +7585,15 @@ ORDER BY (id = $1::uuid) DESC, created_at ASC, id ASC
 // handled automatically by FK cascades on chat_file_links: when
 // dbpurge deletes a chat_files row, the corresponding
 // chat_file_links rows are cascade-deleted by PostgreSQL.
-func (q *sqlQuerier) UnarchiveChatByID(ctx context.Context, id uuid.UUID) ([]Chat, error) {
+func (q *sqlQuerier) UnarchiveChatByID(ctx context.Context, id uuid.UUID) ([]ChatTable, error) {
 	rows, err := q.db.QueryContext(ctx, unarchiveChatByID, id)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Chat
+	var items []ChatTable
 	for rows.Next() {
-		var i Chat
+		var i ChatTable
 		if err := rows.Scan(
 			&i.ID,
 			&i.OwnerID,
@@ -7725,9 +7734,9 @@ type UpdateChatBuildAgentBindingParams struct {
 	ID      uuid.UUID     `db:"id" json:"id"`
 }
 
-func (q *sqlQuerier) UpdateChatBuildAgentBinding(ctx context.Context, arg UpdateChatBuildAgentBindingParams) (Chat, error) {
+func (q *sqlQuerier) UpdateChatBuildAgentBinding(ctx context.Context, arg UpdateChatBuildAgentBindingParams) (ChatTable, error) {
 	row := q.db.QueryRowContext(ctx, updateChatBuildAgentBinding, arg.BuildID, arg.AgentID, arg.ID)
-	var i Chat
+	var i ChatTable
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
@@ -7779,9 +7788,9 @@ type UpdateChatByIDParams struct {
 	ID    uuid.UUID `db:"id" json:"id"`
 }
 
-func (q *sqlQuerier) UpdateChatByID(ctx context.Context, arg UpdateChatByIDParams) (Chat, error) {
+func (q *sqlQuerier) UpdateChatByID(ctx context.Context, arg UpdateChatByIDParams) (ChatTable, error) {
 	row := q.db.QueryRowContext(ctx, updateChatByID, arg.Title, arg.ID)
-	var i Chat
+	var i ChatTable
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
@@ -7878,9 +7887,9 @@ type UpdateChatLabelsByIDParams struct {
 	ID     uuid.UUID       `db:"id" json:"id"`
 }
 
-func (q *sqlQuerier) UpdateChatLabelsByID(ctx context.Context, arg UpdateChatLabelsByIDParams) (Chat, error) {
+func (q *sqlQuerier) UpdateChatLabelsByID(ctx context.Context, arg UpdateChatLabelsByIDParams) (ChatTable, error) {
 	row := q.db.QueryRowContext(ctx, updateChatLabelsByID, arg.Labels, arg.ID)
-	var i Chat
+	var i ChatTable
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
@@ -7932,9 +7941,9 @@ type UpdateChatLastInjectedContextParams struct {
 // skills) on the chat row. Called only when context changes
 // (first workspace attach or agent change). updated_at is
 // intentionally not touched to avoid reordering the chat list.
-func (q *sqlQuerier) UpdateChatLastInjectedContext(ctx context.Context, arg UpdateChatLastInjectedContextParams) (Chat, error) {
+func (q *sqlQuerier) UpdateChatLastInjectedContext(ctx context.Context, arg UpdateChatLastInjectedContextParams) (ChatTable, error) {
 	row := q.db.QueryRowContext(ctx, updateChatLastInjectedContext, arg.LastInjectedContext, arg.ID)
-	var i Chat
+	var i ChatTable
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
@@ -7986,9 +7995,9 @@ type UpdateChatLastModelConfigByIDParams struct {
 	ID                uuid.UUID `db:"id" json:"id"`
 }
 
-func (q *sqlQuerier) UpdateChatLastModelConfigByID(ctx context.Context, arg UpdateChatLastModelConfigByIDParams) (Chat, error) {
+func (q *sqlQuerier) UpdateChatLastModelConfigByID(ctx context.Context, arg UpdateChatLastModelConfigByIDParams) (ChatTable, error) {
 	row := q.db.QueryRowContext(ctx, updateChatLastModelConfigByID, arg.LastModelConfigID, arg.ID)
-	var i Chat
+	var i ChatTable
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
@@ -8058,9 +8067,9 @@ type UpdateChatMCPServerIDsParams struct {
 	ID           uuid.UUID   `db:"id" json:"id"`
 }
 
-func (q *sqlQuerier) UpdateChatMCPServerIDs(ctx context.Context, arg UpdateChatMCPServerIDsParams) (Chat, error) {
+func (q *sqlQuerier) UpdateChatMCPServerIDs(ctx context.Context, arg UpdateChatMCPServerIDsParams) (ChatTable, error) {
 	row := q.db.QueryRowContext(ctx, updateChatMCPServerIDs, pq.Array(arg.MCPServerIDs), arg.ID)
-	var i Chat
+	var i ChatTable
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
@@ -8230,9 +8239,9 @@ type UpdateChatPlanModeByIDParams struct {
 	ID       uuid.UUID        `db:"id" json:"id"`
 }
 
-func (q *sqlQuerier) UpdateChatPlanModeByID(ctx context.Context, arg UpdateChatPlanModeByIDParams) (Chat, error) {
+func (q *sqlQuerier) UpdateChatPlanModeByID(ctx context.Context, arg UpdateChatPlanModeByIDParams) (ChatTable, error) {
 	row := q.db.QueryRowContext(ctx, updateChatPlanModeByID, arg.PlanMode, arg.ID)
-	var i Chat
+	var i ChatTable
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
@@ -8292,7 +8301,7 @@ type UpdateChatStatusParams struct {
 	ID          uuid.UUID      `db:"id" json:"id"`
 }
 
-func (q *sqlQuerier) UpdateChatStatus(ctx context.Context, arg UpdateChatStatusParams) (Chat, error) {
+func (q *sqlQuerier) UpdateChatStatus(ctx context.Context, arg UpdateChatStatusParams) (ChatTable, error) {
 	row := q.db.QueryRowContext(ctx, updateChatStatus,
 		arg.Status,
 		arg.WorkerID,
@@ -8301,7 +8310,7 @@ func (q *sqlQuerier) UpdateChatStatus(ctx context.Context, arg UpdateChatStatusP
 		arg.LastError,
 		arg.ID,
 	)
-	var i Chat
+	var i ChatTable
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
@@ -8362,7 +8371,7 @@ type UpdateChatStatusPreserveUpdatedAtParams struct {
 	ID          uuid.UUID      `db:"id" json:"id"`
 }
 
-func (q *sqlQuerier) UpdateChatStatusPreserveUpdatedAt(ctx context.Context, arg UpdateChatStatusPreserveUpdatedAtParams) (Chat, error) {
+func (q *sqlQuerier) UpdateChatStatusPreserveUpdatedAt(ctx context.Context, arg UpdateChatStatusPreserveUpdatedAtParams) (ChatTable, error) {
 	row := q.db.QueryRowContext(ctx, updateChatStatusPreserveUpdatedAt,
 		arg.Status,
 		arg.WorkerID,
@@ -8372,7 +8381,7 @@ func (q *sqlQuerier) UpdateChatStatusPreserveUpdatedAt(ctx context.Context, arg 
 		arg.UpdatedAt,
 		arg.ID,
 	)
-	var i Chat
+	var i ChatTable
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
@@ -8424,14 +8433,14 @@ type UpdateChatWorkspaceBindingParams struct {
 	ID          uuid.UUID     `db:"id" json:"id"`
 }
 
-func (q *sqlQuerier) UpdateChatWorkspaceBinding(ctx context.Context, arg UpdateChatWorkspaceBindingParams) (Chat, error) {
+func (q *sqlQuerier) UpdateChatWorkspaceBinding(ctx context.Context, arg UpdateChatWorkspaceBindingParams) (ChatTable, error) {
 	row := q.db.QueryRowContext(ctx, updateChatWorkspaceBinding,
 		arg.WorkspaceID,
 		arg.BuildID,
 		arg.AgentID,
 		arg.ID,
 	)
-	var i Chat
+	var i ChatTable
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,

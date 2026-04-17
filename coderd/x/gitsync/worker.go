@@ -318,7 +318,7 @@ func (w *Worker) MarkStale(ctx context.Context, p MarkStaleParams) {
 
 	chats := make([]database.Chat, len(chatRows))
 	for i, row := range chatRows {
-		chats[i] = row.Chat
+		chats[i] = row.ChatTable.Chat()
 	}
 
 	for _, chat := range filterChatsByWorkspaceID(chats, p.WorkspaceID) {

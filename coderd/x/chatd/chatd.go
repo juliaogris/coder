@@ -321,8 +321,8 @@ func (c *turnWorkspaceContext) persistBuildAgentBinding(
 			"update chat build/agent binding: %w", err,
 		)
 	}
-	c.setCurrentChat(updatedChat)
-	return updatedChat, nil
+	c.setCurrentChat(updatedChat.Chat())
+	return updatedChat.Chat(), nil
 }
 
 func (c *turnWorkspaceContext) getWorkspaceAgent(ctx context.Context) (database.WorkspaceAgent, error) {
@@ -1007,7 +1007,7 @@ func (p *Server) CreateChat(ctx context.Context, opts CreateOptions) (database.C
 			return xerrors.Errorf("insert initial chat messages: %w", err)
 		}
 
-		chat = insertedChat
+		chat = insertedChat.Chat()
 
 		if !chat.RootChatID.Valid && !chat.ParentChatID.Valid {
 			chat.RootChatID = uuid.NullUUID{UUID: chat.ID, Valid: true}
@@ -1130,7 +1130,7 @@ func (p *Server) SendMessage(
 
 			result.Queued = true
 			result.QueuedMessage = &queued
-			result.Chat = lockedChat
+			result.Chat = lockedChat.Chat()
 			queuedMessagesSDK = db2sdk.ChatQueuedMessages(queuedMessages)
 			return nil
 		}
@@ -1138,7 +1138,7 @@ func (p *Server) SendMessage(
 		message, updatedChat, err := insertUserMessageAndSetPending(
 			ctx,
 			tx,
-			lockedChat,
+			lockedChat.Chat(),
 			modelConfigID,
 			content,
 			opts.CreatedBy,
@@ -1319,7 +1319,7 @@ func (p *Server) EditMessage(
 		}
 
 		result.Message = newMessage
-		result.Chat = updatedChat
+		result.Chat = updatedChat.Chat()
 		return nil
 	}, nil)
 	if txErr != nil {
@@ -1358,13 +1358,13 @@ func (p *Server) ArchiveChat(ctx context.Context, chat database.Chat) error {
 		if err != nil {
 			return xerrors.Errorf("lock chat for archive: %w", err)
 		}
-		statusChat = lockedChat
+		statusChat = lockedChat.Chat()
 
 		// We do not call setChatWaiting here because it intentionally preserves
 		// pending chats so queued-message promotion can win. Archiving is a
 		// harder stop: both pending and running chats must transition to waiting.
 		if lockedChat.Status == database.ChatStatusPending || lockedChat.Status == database.ChatStatusRunning {
-			statusChat, err = tx.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
+			updated, err := tx.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
 				ID:          chat.ID,
 				Status:      database.ChatStatusWaiting,
 				WorkerID:    uuid.NullUUID{},
@@ -1375,12 +1375,17 @@ func (p *Server) ArchiveChat(ctx context.Context, chat database.Chat) error {
 			if err != nil {
 				return xerrors.Errorf("set chat waiting before archive: %w", err)
 			}
+			statusChat = updated.Chat()
 			interrupted = true
 		}
 
-		archivedChats, err = tx.ArchiveChatByID(ctx, chat.ID)
+		archivedTables, err := tx.ArchiveChatByID(ctx, chat.ID)
 		if err != nil {
 			return xerrors.Errorf("archive chat: %w", err)
+		}
+		archivedChats = make([]database.Chat, len(archivedTables))
+		for i, c := range archivedTables {
+			archivedChats[i] = c.Chat()
 		}
 		return nil
 	}, nil); err != nil {
@@ -1417,13 +1422,17 @@ func (p *Server) applyChatLifecycleTransition(
 	chatID uuid.UUID,
 	action string,
 	kind codersdk.ChatWatchEventKind,
-	transition func(context.Context, uuid.UUID) ([]database.Chat, error),
+	transition func(context.Context, uuid.UUID) ([]database.ChatTable, error),
 ) error {
-	updatedChats, err := transition(ctx, chatID)
+	updatedTables, err := transition(ctx, chatID)
 	if err != nil {
 		return xerrors.Errorf("%s chat: %w", action, err)
 	}
 
+	updatedChats := make([]database.Chat, len(updatedTables))
+	for i, c := range updatedTables {
+		updatedChats[i] = c.Chat()
+	}
 	p.publishChatPubsubEvents(updatedChats, kind)
 	return nil
 }
@@ -1546,7 +1555,7 @@ func (p *Server) PromoteQueued(
 		promoted, updatedChat, err = insertUserMessageAndSetPending(
 			ctx,
 			tx,
-			lockedChat,
+			lockedChat.Chat(),
 			modelConfigID,
 			pqtype.NullRawMessage{
 				RawMessage: targetContent,
@@ -1842,7 +1851,7 @@ func (p *Server) InterruptChat(
 			if locked.Status != database.ChatStatusRequiresAction {
 				return nil
 			}
-			return insertSyntheticToolResultsTx(ctx, tx, locked, "Tool execution interrupted by user")
+			return insertSyntheticToolResultsTx(ctx, tx, locked.Chat(), "Tool execution interrupted by user")
 		}, nil); txErr != nil {
 			p.logger.Error(ctx, "failed to insert synthetic tool results during interrupt",
 				slog.F("chat_id", chat.ID),
@@ -1889,7 +1898,7 @@ var manualTitleLockWorkerID = uuid.MustParse(
 
 const manualTitleLockStaleAfter = time.Minute
 
-func isFreshManualTitleLock(chat database.Chat, now time.Time) bool {
+func isFreshManualTitleLock(chat database.ChatTable, now time.Time) bool {
 	if !chat.WorkerID.Valid || chat.WorkerID.UUID != manualTitleLockWorkerID {
 		return false
 	}
@@ -1905,11 +1914,11 @@ func isFreshManualTitleLock(chat database.Chat, now time.Time) bool {
 func updateChatStatusPreserveUpdatedAt(
 	ctx context.Context,
 	store database.Store,
-	chat database.Chat,
+	chat database.ChatTable,
 	workerID uuid.NullUUID,
 	startedAt sql.NullTime,
 	heartbeatAt sql.NullTime,
-) (database.Chat, error) {
+) (database.ChatTable, error) {
 	return store.UpdateChatStatusPreserveUpdatedAt(
 		ctx,
 		database.UpdateChatStatusPreserveUpdatedAtParams{
@@ -2279,7 +2288,7 @@ func recordManualTitleUsage(
 		if err != nil {
 			return xerrors.Errorf("lock chat for manual title usage: %w", err)
 		}
-		updatedChat = lockedChat
+		updatedChat = lockedChat.Chat()
 		if hasUsage {
 			messages, err := tx.InsertChatMessages(ctx, database.InsertChatMessagesParams{
 				ChatID:              chat.ID,
@@ -2320,13 +2329,14 @@ func recordManualTitleUsage(
 			}
 		}
 		if newTitle != "" && lockedChat.Title == chat.Title && newTitle != lockedChat.Title {
-			updatedChat, err = tx.UpdateChatByID(ctx, database.UpdateChatByIDParams{
+			updatedTable, err := tx.UpdateChatByID(ctx, database.UpdateChatByIDParams{
 				ID:    chat.ID,
 				Title: newTitle,
 			})
 			if err != nil {
 				return xerrors.Errorf("update chat title: %w", err)
 			}
+			updatedChat = updatedTable.Chat()
 		}
 		return nil
 	}, nil)
@@ -2363,11 +2373,10 @@ func (p *Server) setChatWaiting(ctx context.Context, chatID uuid.UUID) (database
 		// it — the pending status takes priority so the new
 		// message gets processed.
 		if locked.Status == database.ChatStatusPending {
-			updatedChat = locked
+			updatedChat = locked.Chat()
 			return nil
 		}
-		var updateErr error
-		updatedChat, updateErr = tx.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
+		updated, updateErr := tx.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
 			ID:          chatID,
 			Status:      database.ChatStatusWaiting,
 			WorkerID:    uuid.NullUUID{},
@@ -2375,7 +2384,11 @@ func (p *Server) setChatWaiting(ctx context.Context, chatID uuid.UUID) (database
 			HeartbeatAt: sql.NullTime{},
 			LastError:   sql.NullString{},
 		})
-		return updateErr
+		if updateErr != nil {
+			return updateErr
+		}
+		updatedChat = updated.Chat()
+		return nil
 	}, nil)
 	if err != nil {
 		return database.Chat{}, err
@@ -2691,7 +2704,7 @@ func insertUserMessageAndSetPending(
 	if err != nil {
 		return database.ChatMessage{}, database.Chat{}, xerrors.Errorf("set chat pending: %w", err)
 	}
-	return message, updatedChat, nil
+	return message, updatedChat.Chat(), nil
 }
 
 // shouldQueueUserMessage reports whether a user message should be
@@ -2936,7 +2949,7 @@ func (p *Server) processOnce(ctx context.Context) {
 		p.inflight.Add(1)
 		go func() {
 			defer p.inflight.Done()
-			p.processChat(ctx, chat)
+			p.processChat(ctx, chat.Chat())
 		}()
 	}
 	p.inflightMu.Unlock()
@@ -3974,7 +3987,7 @@ func (p *Server) chatFileResolver() chatprompt.FileResolver {
 func (p *Server) tryAutoPromoteQueuedMessage(
 	ctx context.Context,
 	tx database.Store,
-	chat database.Chat,
+	chat database.ChatTable,
 ) (*database.ChatMessage, []database.ChatQueuedMessage, bool, error) {
 	logger := p.logger.With(slog.F("chat_id", chat.ID))
 
@@ -4179,7 +4192,7 @@ func (p *Server) processChat(ctx context.Context, chat database.Chat) {
 		// races with the promote endpoint (which also sets status to
 		// pending). We use a transaction with FOR UPDATE to ensure we
 		// don't overwrite a status change made by another caller.
-		var updatedChat database.Chat
+		var updatedChat database.ChatTable
 		err := p.db.InTx(func(tx database.Store) error {
 			// Re-read the chat status under lock — another caller
 			// (e.g. promote) may have already set it to pending.
@@ -4258,7 +4271,7 @@ func (p *Server) processChat(ctx context.Context, chat database.Chat) {
 		if title, ok := generatedTitle.Load(); ok {
 			updatedChat.Title = title
 		}
-		p.publishChatPubsubEvent(updatedChat, codersdk.ChatWatchEventKindStatusChange, nil)
+		p.publishChatPubsubEvent(updatedChat.Chat(), codersdk.ChatWatchEventKindStatusChange, nil)
 
 		// When the chat is parked in requires_action,
 		// publish the stream event and global pubsub event
@@ -4273,10 +4286,10 @@ func (p *Server) processChat(ctx context.Context, chat database.Chat) {
 					ToolCalls: toolCalls,
 				},
 			})
-			p.publishChatActionRequired(updatedChat, runResult.PendingDynamicToolCalls)
+			p.publishChatActionRequired(updatedChat.Chat(), runResult.PendingDynamicToolCalls)
 		}
 		if !wasInterrupted {
-			p.maybeSendPushNotification(cleanupCtx, updatedChat, status, lastError, runResult, logger)
+			p.maybeSendPushNotification(cleanupCtx, updatedChat.Chat(), status, lastError, runResult, logger)
 		}
 	}()
 
@@ -6483,7 +6496,7 @@ func (p *Server) recoverStaleChats(ctx context.Context) {
 			// so the LLM history remains valid if the user
 			// retries the chat later.
 			if locked.Status == database.ChatStatusRequiresAction {
-				if synthErr := insertSyntheticToolResultsTx(ctx, tx, locked, "Dynamic tool execution timed out"); synthErr != nil {
+				if synthErr := insertSyntheticToolResultsTx(ctx, tx, locked.Chat(), "Dynamic tool execution timed out"); synthErr != nil {
 					p.logger.Warn(ctx, "failed to insert synthetic tool results during stale recovery",
 						slog.F("chat_id", chat.ID),
 						slog.Error(synthErr),

@@ -211,10 +211,19 @@ WHERE
     id = @id::bigint;
 
 -- name: GetChatByID :one
+-- Reads from the chats_with_acl view so Chat.RBACObject() authorizes
+-- against the effective ACL. Sub-chats inherit the root chat's ACL via
+-- COALESCE (migration 000471); roots and orphaned sub-chats fall back
+-- to their own stored ACL. Reading the base chats table would leave
+-- dbauthz checking empty user_acl/group_acl for every sub-chat and
+-- denying shared viewers with a 404 on /chats/{sub}. The
+-- `chats_with_acl AS chats` alias preserves the Chat row type so
+-- downstream RBACObject() and callers continue to compile unchanged
+-- (same pattern GetChats uses below).
 SELECT
     *
 FROM
-    chats
+    chats_with_acl AS chats
 WHERE
     id = @id::uuid;
 

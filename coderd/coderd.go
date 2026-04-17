@@ -348,10 +348,8 @@ func New(options *Options) *API {
 		})
 	}
 
-	if options.DeploymentValues.DisableWorkspaceSharing ||
-		options.DeploymentValues.DisableChatSharing {
-		rbac.SetWorkspaceACLDisabled(true)
-	}
+	rbac.SetWorkspaceACLDisabled(bool(options.DeploymentValues.DisableWorkspaceSharing))
+	rbac.SetChatACLDisabled(bool(options.DeploymentValues.DisableChatSharing))
 
 	if options.PrometheusRegistry == nil {
 		options.PrometheusRegistry = prometheus.NewRegistry()

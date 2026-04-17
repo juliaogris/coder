@@ -1519,7 +1519,7 @@ func (q *querier) authorizeProvisionerJob(ctx context.Context, job database.Prov
 	return nil
 }
 
-func (q *querier) AcquireChats(ctx context.Context, arg database.AcquireChatsParams) ([]database.Chat, error) {
+func (q *querier) AcquireChats(ctx context.Context, arg database.AcquireChatsParams) ([]database.ChatTable, error) {
 	// AcquireChats is a system-level operation used by the chat processor.
 	// Authorization is done at the system level, not per-user.
 	if err := q.authorizeContext(ctx, policy.ActionUpdate, rbac.ResourceChat); err != nil {
@@ -1573,7 +1573,7 @@ func (q *querier) AllUserIDs(ctx context.Context, includeSystem bool) ([]uuid.UU
 	return q.db.AllUserIDs(ctx, includeSystem)
 }
 
-func (q *querier) ArchiveChatByID(ctx context.Context, id uuid.UUID) ([]database.Chat, error) {
+func (q *querier) ArchiveChatByID(ctx context.Context, id uuid.UUID) ([]database.ChatTable, error) {
 	chat, err := q.db.GetChatByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -2471,7 +2471,7 @@ func (q *querier) GetActiveAISeatCount(ctx context.Context) (int64, error) {
 	return q.db.GetActiveAISeatCount(ctx)
 }
 
-func (q *querier) GetActiveChatsByAgentID(ctx context.Context, agentID uuid.UUID) ([]database.Chat, error) {
+func (q *querier) GetActiveChatsByAgentID(ctx context.Context, agentID uuid.UUID) ([]database.ChatTable, error) {
 	return fetchWithPostFilter(q.auth, policy.ActionRead, q.db.GetActiveChatsByAgentID)(ctx, agentID)
 }
 
@@ -2581,7 +2581,7 @@ func (q *querier) GetChatByID(ctx context.Context, id uuid.UUID) (database.Chat,
 	return fetch(q.log, q.auth, q.db.GetChatByID)(ctx, id)
 }
 
-func (q *querier) GetChatByIDForUpdate(ctx context.Context, id uuid.UUID) (database.Chat, error) {
+func (q *querier) GetChatByIDForUpdate(ctx context.Context, id uuid.UUID) (database.ChatTable, error) {
 	return fetch(q.log, q.auth, q.db.GetChatByIDForUpdate)(ctx, id)
 }
 
@@ -2945,7 +2945,7 @@ func (q *querier) GetChats(ctx context.Context, arg database.GetChatsParams) ([]
 	return q.db.GetAuthorizedChats(ctx, arg, prep)
 }
 
-func (q *querier) GetChatsByWorkspaceIDs(ctx context.Context, ids []uuid.UUID) ([]database.Chat, error) {
+func (q *querier) GetChatsByWorkspaceIDs(ctx context.Context, ids []uuid.UUID) ([]database.ChatTable, error) {
 	return fetchWithPostFilter(q.auth, policy.ActionRead, q.db.GetChatsByWorkspaceIDs)(ctx, ids)
 }
 
@@ -3824,7 +3824,7 @@ func (q *querier) GetRuntimeConfig(ctx context.Context, key string) (string, err
 	return q.db.GetRuntimeConfig(ctx, key)
 }
 
-func (q *querier) GetStaleChats(ctx context.Context, staleThreshold time.Time) ([]database.Chat, error) {
+func (q *querier) GetStaleChats(ctx context.Context, staleThreshold time.Time) ([]database.ChatTable, error) {
 	// GetStaleChats is a system-level operation used by the chat processor for recovery.
 	if err := q.authorizeContext(ctx, policy.ActionRead, rbac.ResourceChat); err != nil {
 		return nil, err
@@ -4992,7 +4992,7 @@ func (q *querier) InsertAuditLog(ctx context.Context, arg database.InsertAuditLo
 	return insert(q.log, q.auth, rbac.ResourceAuditLog, q.db.InsertAuditLog)(ctx, arg)
 }
 
-func (q *querier) InsertChat(ctx context.Context, arg database.InsertChatParams) (database.Chat, error) {
+func (q *querier) InsertChat(ctx context.Context, arg database.InsertChatParams) (database.ChatTable, error) {
 	return insert(q.log, q.auth, rbac.ResourceChat.WithOwner(arg.OwnerID.String()).InOrg(arg.OrganizationID), q.db.InsertChat)(ctx, arg)
 }
 
@@ -5932,7 +5932,7 @@ func (q *querier) TryAcquireLock(ctx context.Context, id int64) (bool, error) {
 	return q.db.TryAcquireLock(ctx, id)
 }
 
-func (q *querier) UnarchiveChatByID(ctx context.Context, id uuid.UUID) ([]database.Chat, error) {
+func (q *querier) UnarchiveChatByID(ctx context.Context, id uuid.UUID) ([]database.ChatTable, error) {
 	chat, err := q.db.GetChatByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -6012,25 +6012,25 @@ func (q *querier) UpdateChatACLByID(ctx context.Context, arg database.UpdateChat
 	return fetchAndExec(q.log, q.auth, policy.ActionShare, fetch, q.db.UpdateChatACLByID)(ctx, arg)
 }
 
-func (q *querier) UpdateChatBuildAgentBinding(ctx context.Context, arg database.UpdateChatBuildAgentBindingParams) (database.Chat, error) {
+func (q *querier) UpdateChatBuildAgentBinding(ctx context.Context, arg database.UpdateChatBuildAgentBindingParams) (database.ChatTable, error) {
 	chat, err := q.db.GetChatByID(ctx, arg.ID)
 	if err != nil {
-		return database.Chat{}, err
+		return database.ChatTable{}, err
 	}
 	if err := q.authorizeContext(ctx, policy.ActionUpdate, chat); err != nil {
-		return database.Chat{}, err
+		return database.ChatTable{}, err
 	}
 
 	return q.db.UpdateChatBuildAgentBinding(ctx, arg)
 }
 
-func (q *querier) UpdateChatByID(ctx context.Context, arg database.UpdateChatByIDParams) (database.Chat, error) {
+func (q *querier) UpdateChatByID(ctx context.Context, arg database.UpdateChatByIDParams) (database.ChatTable, error) {
 	chat, err := q.db.GetChatByID(ctx, arg.ID)
 	if err != nil {
-		return database.Chat{}, err
+		return database.ChatTable{}, err
 	}
 	if err := q.authorizeContext(ctx, policy.ActionUpdate, chat); err != nil {
-		return database.Chat{}, err
+		return database.ChatTable{}, err
 	}
 	return q.db.UpdateChatByID(ctx, arg)
 }
@@ -6068,35 +6068,35 @@ func (q *querier) UpdateChatHeartbeats(ctx context.Context, arg database.UpdateC
 	return q.db.UpdateChatHeartbeats(ctx, arg)
 }
 
-func (q *querier) UpdateChatLabelsByID(ctx context.Context, arg database.UpdateChatLabelsByIDParams) (database.Chat, error) {
+func (q *querier) UpdateChatLabelsByID(ctx context.Context, arg database.UpdateChatLabelsByIDParams) (database.ChatTable, error) {
 	chat, err := q.db.GetChatByID(ctx, arg.ID)
 	if err != nil {
-		return database.Chat{}, err
+		return database.ChatTable{}, err
 	}
 	if err := q.authorizeContext(ctx, policy.ActionUpdate, chat); err != nil {
-		return database.Chat{}, err
+		return database.ChatTable{}, err
 	}
 	return q.db.UpdateChatLabelsByID(ctx, arg)
 }
 
-func (q *querier) UpdateChatLastInjectedContext(ctx context.Context, arg database.UpdateChatLastInjectedContextParams) (database.Chat, error) {
+func (q *querier) UpdateChatLastInjectedContext(ctx context.Context, arg database.UpdateChatLastInjectedContextParams) (database.ChatTable, error) {
 	chat, err := q.db.GetChatByID(ctx, arg.ID)
 	if err != nil {
-		return database.Chat{}, err
+		return database.ChatTable{}, err
 	}
 	if err := q.authorizeContext(ctx, policy.ActionUpdate, chat); err != nil {
-		return database.Chat{}, err
+		return database.ChatTable{}, err
 	}
 	return q.db.UpdateChatLastInjectedContext(ctx, arg)
 }
 
-func (q *querier) UpdateChatLastModelConfigByID(ctx context.Context, arg database.UpdateChatLastModelConfigByIDParams) (database.Chat, error) {
+func (q *querier) UpdateChatLastModelConfigByID(ctx context.Context, arg database.UpdateChatLastModelConfigByIDParams) (database.ChatTable, error) {
 	chat, err := q.db.GetChatByID(ctx, arg.ID)
 	if err != nil {
-		return database.Chat{}, err
+		return database.ChatTable{}, err
 	}
 	if err := q.authorizeContext(ctx, policy.ActionUpdate, chat); err != nil {
-		return database.Chat{}, err
+		return database.ChatTable{}, err
 	}
 	return q.db.UpdateChatLastModelConfigByID(ctx, arg)
 }
@@ -6112,13 +6112,13 @@ func (q *querier) UpdateChatLastReadMessageID(ctx context.Context, arg database.
 	return q.db.UpdateChatLastReadMessageID(ctx, arg)
 }
 
-func (q *querier) UpdateChatMCPServerIDs(ctx context.Context, arg database.UpdateChatMCPServerIDsParams) (database.Chat, error) {
+func (q *querier) UpdateChatMCPServerIDs(ctx context.Context, arg database.UpdateChatMCPServerIDsParams) (database.ChatTable, error) {
 	chat, err := q.db.GetChatByID(ctx, arg.ID)
 	if err != nil {
-		return database.Chat{}, err
+		return database.ChatTable{}, err
 	}
 	if err := q.authorizeContext(ctx, policy.ActionUpdate, chat); err != nil {
-		return database.Chat{}, err
+		return database.ChatTable{}, err
 	}
 	return q.db.UpdateChatMCPServerIDs(ctx, arg)
 }
@@ -6157,13 +6157,13 @@ func (q *querier) UpdateChatPinOrder(ctx context.Context, arg database.UpdateCha
 	return q.db.UpdateChatPinOrder(ctx, arg)
 }
 
-func (q *querier) UpdateChatPlanModeByID(ctx context.Context, arg database.UpdateChatPlanModeByIDParams) (database.Chat, error) {
+func (q *querier) UpdateChatPlanModeByID(ctx context.Context, arg database.UpdateChatPlanModeByIDParams) (database.ChatTable, error) {
 	chat, err := q.db.GetChatByID(ctx, arg.ID)
 	if err != nil {
-		return database.Chat{}, err
+		return database.ChatTable{}, err
 	}
 	if err := q.authorizeContext(ctx, policy.ActionUpdate, chat); err != nil {
-		return database.Chat{}, err
+		return database.ChatTable{}, err
 	}
 	return q.db.UpdateChatPlanModeByID(ctx, arg)
 }
@@ -6175,37 +6175,37 @@ func (q *querier) UpdateChatProvider(ctx context.Context, arg database.UpdateCha
 	return q.db.UpdateChatProvider(ctx, arg)
 }
 
-func (q *querier) UpdateChatStatus(ctx context.Context, arg database.UpdateChatStatusParams) (database.Chat, error) {
+func (q *querier) UpdateChatStatus(ctx context.Context, arg database.UpdateChatStatusParams) (database.ChatTable, error) {
 	// UpdateChatStatus is used by the chat processor to change chat status.
 	// It should be called with system context.
 	chat, err := q.db.GetChatByID(ctx, arg.ID)
 	if err != nil {
-		return database.Chat{}, err
+		return database.ChatTable{}, err
 	}
 	if err := q.authorizeContext(ctx, policy.ActionUpdate, chat); err != nil {
-		return database.Chat{}, err
+		return database.ChatTable{}, err
 	}
 	return q.db.UpdateChatStatus(ctx, arg)
 }
 
-func (q *querier) UpdateChatStatusPreserveUpdatedAt(ctx context.Context, arg database.UpdateChatStatusPreserveUpdatedAtParams) (database.Chat, error) {
+func (q *querier) UpdateChatStatusPreserveUpdatedAt(ctx context.Context, arg database.UpdateChatStatusPreserveUpdatedAtParams) (database.ChatTable, error) {
 	chat, err := q.db.GetChatByID(ctx, arg.ID)
 	if err != nil {
-		return database.Chat{}, err
+		return database.ChatTable{}, err
 	}
 	if err := q.authorizeContext(ctx, policy.ActionUpdate, chat); err != nil {
-		return database.Chat{}, err
+		return database.ChatTable{}, err
 	}
 	return q.db.UpdateChatStatusPreserveUpdatedAt(ctx, arg)
 }
 
-func (q *querier) UpdateChatWorkspaceBinding(ctx context.Context, arg database.UpdateChatWorkspaceBindingParams) (database.Chat, error) {
+func (q *querier) UpdateChatWorkspaceBinding(ctx context.Context, arg database.UpdateChatWorkspaceBindingParams) (database.ChatTable, error) {
 	chat, err := q.db.GetChatByID(ctx, arg.ID)
 	if err != nil {
-		return database.Chat{}, err
+		return database.ChatTable{}, err
 	}
 	if err := q.authorizeContext(ctx, policy.ActionUpdate, chat); err != nil {
-		return database.Chat{}, err
+		return database.ChatTable{}, err
 	}
 
 	return q.db.UpdateChatWorkspaceBinding(ctx, arg)

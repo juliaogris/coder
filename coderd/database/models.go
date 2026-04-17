@@ -4398,6 +4398,7 @@ type BoundaryUsageStat struct {
 	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
 }
 
+// Projects each chat alongside its effective ACL; sub-chats COALESCE to the root chat's ACL, orphans fall back to their own.
 type Chat struct {
 	ID                  uuid.UUID             `db:"id" json:"id"`
 	OwnerID             uuid.UUID             `db:"owner_id" json:"owner_id"`
@@ -4575,18 +4576,7 @@ type ChatQueuedMessage struct {
 	CreatedAt time.Time       `db:"created_at" json:"created_at"`
 }
 
-type ChatUsageLimitConfig struct {
-	ID                 int64     `db:"id" json:"id"`
-	Singleton          bool      `db:"singleton" json:"singleton"`
-	Enabled            bool      `db:"enabled" json:"enabled"`
-	DefaultLimitMicros int64     `db:"default_limit_micros" json:"default_limit_micros"`
-	Period             string    `db:"period" json:"period"`
-	CreatedAt          time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt          time.Time `db:"updated_at" json:"updated_at"`
-}
-
-// Projects each chat alongside its effective ACL; sub-chats COALESCE to the root chat's ACL, orphans fall back to their own.
-type ChatsWithAcl struct {
+type ChatTable struct {
 	ID                  uuid.UUID             `db:"id" json:"id"`
 	OwnerID             uuid.UUID             `db:"owner_id" json:"owner_id"`
 	WorkspaceID         uuid.NullUUID         `db:"workspace_id" json:"workspace_id"`
@@ -4616,6 +4606,16 @@ type ChatsWithAcl struct {
 	ClientType          ChatClientType        `db:"client_type" json:"client_type"`
 	UserACL             ChatACL               `db:"user_acl" json:"user_acl"`
 	GroupACL            ChatACL               `db:"group_acl" json:"group_acl"`
+}
+
+type ChatUsageLimitConfig struct {
+	ID                 int64     `db:"id" json:"id"`
+	Singleton          bool      `db:"singleton" json:"singleton"`
+	Enabled            bool      `db:"enabled" json:"enabled"`
+	DefaultLimitMicros int64     `db:"default_limit_micros" json:"default_limit_micros"`
+	Period             string    `db:"period" json:"period"`
+	CreatedAt          time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt          time.Time `db:"updated_at" json:"updated_at"`
 }
 
 type ConnectionLog struct {

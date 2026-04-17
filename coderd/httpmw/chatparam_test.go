@@ -75,7 +75,7 @@ func TestChatParam(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		return chat
+		return chat.Chat()
 	}
 
 	t.Run("None", func(t *testing.T) {

@@ -174,13 +174,34 @@ func (t Task) RBACObject() rbac.Object {
 	return obj
 }
 
+// ChatTable returns the base-table projection of this Chat. The view's
+// effective-ACL columns are copied into the table struct's own ACL
+// fields so RBACObject(), called via delegation, authorizes against
+// the effective ACL.
+func (c Chat) ChatTable() ChatTable {
+	return ChatTable(c)
+}
+
+// Chat returns a view-row projection of this ChatTable. Use it to hand
+// the return value of an UPDATE ... RETURNING * (which sqlc types as
+// ChatTable) to callbacks and helpers that accept database.Chat. All
+// fields map 1:1; there is no effective-ACL resolution because the
+// source row is already the stored copy.
+func (c ChatTable) Chat() Chat {
+	return Chat(c)
+}
+
 func (c Chat) RBACObject() rbac.Object {
+	return c.ChatTable().RBACObject()
+}
+
+func (c ChatTable) RBACObject() rbac.Object {
 	obj := rbac.ResourceChat.
 		WithID(c.ID).
 		WithOwner(c.OwnerID.String()).
 		InOrg(c.OrganizationID)
 
-	if rbac.WorkspaceACLDisabled() {
+	if rbac.ChatACLDisabled() {
 		return obj
 	}
 
@@ -190,7 +211,7 @@ func (c Chat) RBACObject() rbac.Object {
 }
 
 func (r GetChatsRow) RBACObject() rbac.Object {
-	return r.Chat.RBACObject()
+	return r.ChatTable.RBACObject()
 }
 
 func (c ChatFile) RBACObject() rbac.Object {

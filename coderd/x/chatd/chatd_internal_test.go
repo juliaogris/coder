@@ -361,9 +361,9 @@ func TestRegenerateChatTitle_PersistsAndBroadcasts(t *testing.T) {
 		),
 	)
 
-	lockTx.EXPECT().GetChatByIDForUpdate(gomock.Any(), chatID).Return(chat, nil)
+	lockTx.EXPECT().GetChatByIDForUpdate(gomock.Any(), chatID).Return(chat.ChatTable(), nil)
 
-	usageTx.EXPECT().GetChatByIDForUpdate(gomock.Any(), chatID).Return(chat, nil)
+	usageTx.EXPECT().GetChatByIDForUpdate(gomock.Any(), chatID).Return(chat.ChatTable(), nil)
 	usageTx.EXPECT().InsertChatMessages(gomock.Any(), gomock.AssignableToTypeOf(database.InsertChatMessagesParams{})).DoAndReturn(
 		func(_ context.Context, arg database.InsertChatMessagesParams) ([]database.ChatMessage, error) {
 			require.Equal(t, []uuid.UUID{ownerID}, arg.CreatedBy)
@@ -376,9 +376,9 @@ func TestRegenerateChatTitle_PersistsAndBroadcasts(t *testing.T) {
 	usageTx.EXPECT().UpdateChatByID(gomock.Any(), database.UpdateChatByIDParams{
 		ID:    chatID,
 		Title: wantTitle,
-	}).Return(updatedChat, nil)
+	}).Return(updatedChat.ChatTable(), nil)
 
-	unlockTx.EXPECT().GetChatByIDForUpdate(gomock.Any(), chatID).Return(updatedChat, nil)
+	unlockTx.EXPECT().GetChatByIDForUpdate(gomock.Any(), chatID).Return(updatedChat.ChatTable(), nil)
 
 	gotChat, err := server.RegenerateChatTitle(ctx, chat)
 	require.NoError(t, err)
@@ -524,11 +524,11 @@ func TestRegenerateChatTitle_PersistsAndBroadcasts_IdleChatReleasesManualLock(t 
 		),
 	)
 
-	lockTx.EXPECT().GetChatByIDForUpdate(gomock.Any(), chatID).Return(chat, nil)
+	lockTx.EXPECT().GetChatByIDForUpdate(gomock.Any(), chatID).Return(chat.ChatTable(), nil)
 	lockTx.EXPECT().UpdateChatStatusPreserveUpdatedAt(
 		gomock.Any(),
 		gomock.AssignableToTypeOf(database.UpdateChatStatusPreserveUpdatedAtParams{}),
-	).DoAndReturn(func(_ context.Context, arg database.UpdateChatStatusPreserveUpdatedAtParams) (database.Chat, error) {
+	).DoAndReturn(func(_ context.Context, arg database.UpdateChatStatusPreserveUpdatedAtParams) (database.ChatTable, error) {
 		require.Equal(t, chat.ID, arg.ID)
 		require.Equal(t, chat.Status, arg.Status)
 		require.Equal(t, uuid.NullUUID{UUID: manualTitleLockWorkerID, Valid: true}, arg.WorkerID)
@@ -537,10 +537,10 @@ func TestRegenerateChatTitle_PersistsAndBroadcasts_IdleChatReleasesManualLock(t 
 		require.False(t, arg.HeartbeatAt.Valid)
 		require.Equal(t, chat.LastError, arg.LastError)
 		require.Equal(t, chat.UpdatedAt, arg.UpdatedAt)
-		return lockedChat, nil
+		return lockedChat.ChatTable(), nil
 	})
 
-	usageTx.EXPECT().GetChatByIDForUpdate(gomock.Any(), chatID).Return(lockedChat, nil)
+	usageTx.EXPECT().GetChatByIDForUpdate(gomock.Any(), chatID).Return(lockedChat.ChatTable(), nil)
 	usageTx.EXPECT().InsertChatMessages(gomock.Any(), gomock.AssignableToTypeOf(database.InsertChatMessagesParams{})).DoAndReturn(
 		func(_ context.Context, arg database.InsertChatMessagesParams) ([]database.ChatMessage, error) {
 			require.Equal(t, []uuid.UUID{ownerID}, arg.CreatedBy)
@@ -553,9 +553,9 @@ func TestRegenerateChatTitle_PersistsAndBroadcasts_IdleChatReleasesManualLock(t 
 	usageTx.EXPECT().UpdateChatByID(gomock.Any(), database.UpdateChatByIDParams{
 		ID:    chatID,
 		Title: wantTitle,
-	}).Return(updatedChat, nil)
+	}).Return(updatedChat.ChatTable(), nil)
 
-	unlockTx.EXPECT().GetChatByIDForUpdate(gomock.Any(), chatID).Return(updatedChat, nil)
+	unlockTx.EXPECT().GetChatByIDForUpdate(gomock.Any(), chatID).Return(updatedChat.ChatTable(), nil)
 	unlockTx.EXPECT().UpdateChatStatusPreserveUpdatedAt(
 		gomock.Any(),
 		database.UpdateChatStatusPreserveUpdatedAtParams{
@@ -567,7 +567,7 @@ func TestRegenerateChatTitle_PersistsAndBroadcasts_IdleChatReleasesManualLock(t 
 			LastError:   updatedChat.LastError,
 			UpdatedAt:   updatedChat.UpdatedAt,
 		},
-	).Return(unlockedChat, nil)
+	).Return(unlockedChat.ChatTable(), nil)
 
 	gotChat, err := server.RegenerateChatTitle(ctx, chat)
 	require.NoError(t, err)
@@ -796,7 +796,7 @@ func TestPersistInstructionFilesIncludesAgentMetadata(t *testing.T) {
 			}
 			return false
 		}),
-	).Return(database.Chat{}, nil).Times(1)
+	).Return(database.ChatTable{}, nil).Times(1)
 
 	conn := agentconnmock.NewMockAgentConn(ctrl)
 	conn.EXPECT().SetExtraHeaders(gomock.Any()).Times(1)
@@ -958,7 +958,7 @@ func TestPersistInstructionFilesSentinelWithSkills(t *testing.T) {
 			}
 			return false
 		}),
-	).Return(database.Chat{}, nil).Times(1)
+	).Return(database.ChatTable{}, nil).Times(1)
 
 	conn := agentconnmock.NewMockAgentConn(ctrl)
 	conn.EXPECT().SetExtraHeaders(gomock.Any()).Times(1)
@@ -1049,7 +1049,7 @@ func TestPersistInstructionFilesSentinelNoSkillsClearsColumn(t *testing.T) {
 			// cleared to NULL.
 			return !arg.LastInjectedContext.Valid
 		}),
-	).Return(database.Chat{}, nil).Times(1)
+	).Return(database.ChatTable{}, nil).Times(1)
 
 	conn := agentconnmock.NewMockAgentConn(ctrl)
 	conn.EXPECT().SetExtraHeaders(gomock.Any()).Times(1)
@@ -1164,7 +1164,7 @@ func TestTurnWorkspaceContext_NullBindingLazyBind(t *testing.T) {
 			BuildID: uuid.NullUUID{UUID: buildID, Valid: true},
 			AgentID: uuid.NullUUID{UUID: agentID, Valid: true},
 			ID:      chat.ID,
-		}).Return(updatedChat, nil),
+		}).Return(updatedChat.ChatTable(), nil),
 	)
 
 	chatStateMu := &sync.Mutex{}
@@ -1223,7 +1223,7 @@ func TestTurnWorkspaceContext_StaleBindingRepair(t *testing.T) {
 			BuildID: uuid.NullUUID{UUID: buildID, Valid: true},
 			AgentID: uuid.NullUUID{UUID: currentAgentID, Valid: true},
 			ID:      chat.ID,
-		}).Return(updatedChat, nil),
+		}).Return(updatedChat.ChatTable(), nil),
 	)
 
 	chatStateMu := &sync.Mutex{}
@@ -1280,7 +1280,7 @@ func TestTurnWorkspaceContextGetWorkspaceConnLazyValidationSwitchesWorkspaceAgen
 			BuildID: uuid.NullUUID{UUID: buildID, Valid: true},
 			AgentID: uuid.NullUUID{UUID: currentAgentID, Valid: true},
 			ID:      chat.ID,
-		}).Return(updatedChat, nil),
+		}).Return(updatedChat.ChatTable(), nil),
 	)
 
 	conn := agentconnmock.NewMockAgentConn(ctrl)
@@ -1452,7 +1452,7 @@ func TestTurnWorkspaceContext_EnsureWorkspaceAgentIgnoresCachedAgentForDifferent
 			ID:      chat.ID,
 			BuildID: uuid.NullUUID{UUID: buildID, Valid: true},
 			AgentID: uuid.NullUUID{UUID: resolvedAgent.ID, Valid: true},
-		}).Return(updatedChat, nil),
+		}).Return(updatedChat.ChatTable(), nil),
 	)
 
 	chatStateMu := &sync.Mutex{}
@@ -2837,13 +2837,13 @@ func TestProcessChat_IgnoresStaleControlNotification(t *testing.T) {
 		},
 	)
 	db.EXPECT().GetChatByIDForUpdate(gomock.Any(), chatID).Return(
-		database.Chat{ID: chatID, Status: database.ChatStatusRunning, WorkerID: uuid.NullUUID{UUID: workerID, Valid: true}}, nil,
+		database.ChatTable{ID: chatID, Status: database.ChatStatusRunning, WorkerID: uuid.NullUUID{UUID: workerID, Valid: true}}, nil,
 	)
 	db.EXPECT().UpdateChatStatus(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, params database.UpdateChatStatusParams) (database.Chat, error) {
+		func(_ context.Context, params database.UpdateChatStatusParams) (database.ChatTable, error) {
 			finalStatus = params.Status
 			close(cleanupDone)
-			return database.Chat{ID: chatID, Status: params.Status}, nil
+			return database.ChatTable{ID: chatID, Status: params.Status}, nil
 		},
 	)
 

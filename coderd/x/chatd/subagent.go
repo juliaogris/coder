@@ -564,7 +564,7 @@ func (p *Server) createChildSubagentChatWithOptions(
 			return xerrors.Errorf("insert initial child system messages: %w", err)
 		}
 
-		child = insertedChat
+		child = insertedChat.Chat()
 
 		// Copy persisted context before the initial child prompt so the
 		// child cannot be acquired until its inherited context is in

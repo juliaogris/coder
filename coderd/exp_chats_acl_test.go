@@ -13,6 +13,8 @@ import (
 	"github.com/coder/coder/v2/coderd/database"
 	"github.com/coder/coder/v2/coderd/database/dbauthz"
 	"github.com/coder/coder/v2/coderd/database/dbgen"
+	"github.com/coder/coder/v2/coderd/rbac"
+	"github.com/coder/coder/v2/coderd/rbac/policy"
 	"github.com/coder/coder/v2/coderd/x/chatd/chatprompt"
 	"github.com/coder/coder/v2/codersdk"
 	"github.com/coder/coder/v2/testutil"
@@ -708,10 +710,146 @@ func findAssistantMessageForViewer(t *testing.T, msgs []codersdk.ChatMessageForV
 	return codersdk.ChatMessageForViewer{}
 }
 
+// TestSubChatAccess_ViewerViaRootACL exercises the core promise of
+// migration 000471: a viewer granted ChatRoleRead on a root chat can
+// reach the sub-chat through the HTTP API. The stored user_acl on the
+// sub-chat row is empty by design; the chats_with_acl view must supply
+// the root ACL for dbauthz to authorize the viewer.
+func TestSubChatAccess_ViewerViaRootACL(t *testing.T) {
+	t.Parallel()
+
+	ctx := testutil.Context(t, testutil.WaitLong)
+	ownerClient, db := newChatClientWithDatabase(t)
+	firstUser := coderdtest.CreateFirstUser(t, ownerClient.Client)
+	modelConfig := createChatModelConfig(t, ownerClient)
+
+	viewerRaw, viewer := coderdtest.CreateAnotherUser(t, ownerClient.Client, firstUser.OrganizationID)
+	viewerClient := codersdk.NewExperimentalClient(viewerRaw)
+
+	root := createSharedChat(ctx, t, ownerClient, firstUser.OrganizationID, "root chat with viewer acl")
+
+	subChat, err := db.InsertChat(dbauthz.AsSystemRestricted(ctx), database.InsertChatParams{
+		OrganizationID:    firstUser.OrganizationID,
+		Status:            database.ChatStatusWaiting,
+		ClientType:        database.ChatClientTypeUi,
+		OwnerID:           firstUser.UserID,
+		LastModelConfigID: modelConfig.ID,
+		Title:             "sub-chat inherits root acl",
+		ParentChatID:      uuid.NullUUID{UUID: root.ID, Valid: true},
+		RootChatID:        uuid.NullUUID{UUID: root.ID, Valid: true},
+	})
+	require.NoError(t, err)
+
+	insertShareTestAssistantMessage(ctx, t, db, subChat.ID, modelConfig.ID, uuid.Nil)
+
+	err = ownerClient.UpdateChatACL(ctx, root.ID, codersdk.UpdateChatACL{
+		UserRoles: map[string]codersdk.ChatShareEntry{
+			viewer.ID.String(): {Role: codersdk.ChatRoleRead},
+		},
+	})
+	require.NoError(t, err)
+
+	// (1) GET /chats/{subChatID} must return 200 for the viewer.
+	res, err := viewerClient.Request(ctx, http.MethodGet, "/api/experimental/chats/"+subChat.ID.String(), nil)
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode,
+		"viewer with root-chat ChatRoleRead must reach the sub-chat via the effective ACL")
+
+	// (2) GET /chats/{subChatID}/messages must return 200 with the
+	// seeded assistant message.
+	msgs, err := viewerClient.GetChatMessagesForViewer(ctx, subChat.ID, nil)
+	require.NoError(t, err)
+	_ = findAssistantMessageForViewer(t, msgs.Messages)
+
+	// (3) Write path still rejects: sub-chats cannot have their own
+	// ACL set, even by the owner.
+	err = ownerClient.UpdateChatACL(ctx, subChat.ID, codersdk.UpdateChatACL{
+		UserRoles: map[string]codersdk.ChatShareEntry{
+			viewer.ID.String(): {Role: codersdk.ChatRoleRead},
+		},
+	})
+	sdkErr := requireSDKError(t, err, http.StatusBadRequest)
+	require.Contains(t, sdkErr.Message, "root chats")
+}
+
 func chatIDSet(chats []codersdk.Chat) map[uuid.UUID]struct{} {
 	ids := make(map[uuid.UUID]struct{}, len(chats))
 	for _, c := range chats {
 		ids[c.ID] = struct{}{}
 	}
 	return ids
+}
+
+// TestChatSharingDisabled mirrors TestWorkspaceSharingDisabled: when
+// DisableChatSharing is set at startup, viewers with a stored chat ACL
+// entry are denied access. When it is unset the ACL is enforced.
+//
+//nolint:tparallel,paralleltest // Subtests modify a package global (rbac.chatACLDisabled).
+func TestChatSharingDisabled(t *testing.T) {
+	t.Run("CanAccessWhenEnabled", func(t *testing.T) {
+		ctx := testutil.Context(t, testutil.WaitLong)
+		ownerClient, _ := newChatClientWithDatabase(t)
+		firstUser := coderdtest.CreateFirstUser(t, ownerClient.Client)
+		_ = createChatModelConfig(t, ownerClient)
+
+		viewerRaw, viewer := coderdtest.CreateAnotherUser(t, ownerClient.Client, firstUser.OrganizationID)
+		viewerClient := codersdk.NewExperimentalClient(viewerRaw)
+
+		chat := createSharedChat(ctx, t, ownerClient, firstUser.OrganizationID, "chat sharing enabled")
+		err := ownerClient.UpdateChatACL(ctx, chat.ID, codersdk.UpdateChatACL{
+			UserRoles: map[string]codersdk.ChatShareEntry{
+				viewer.ID.String(): {Role: codersdk.ChatRoleRead},
+			},
+		})
+		require.NoError(t, err)
+
+		_, err = viewerClient.GetChat(ctx, chat.ID)
+		require.NoError(t, err, "shared viewer must reach chat when sharing is enabled")
+	})
+
+	t.Run("NoAccessWhenDisabled", func(t *testing.T) {
+		t.Cleanup(func() {
+			rbac.ReloadBuiltinRoles(nil)
+		})
+
+		ctx := testutil.Context(t, testutil.WaitLong)
+		dv := chatDeploymentValues(t)
+		dv.DisableChatSharing = true
+
+		rawClient, db := coderdtest.NewWithDatabase(t, &coderdtest.Options{
+			DeploymentValues: dv,
+		})
+		ownerClient := codersdk.NewExperimentalClient(rawClient)
+		firstUser := coderdtest.CreateFirstUser(t, rawClient)
+		_ = createChatModelConfig(t, ownerClient)
+
+		viewerRaw, viewer := coderdtest.CreateAnotherUser(t, rawClient, firstUser.OrganizationID)
+		viewerClient := codersdk.NewExperimentalClient(viewerRaw)
+
+		chat := createSharedChat(ctx, t, ownerClient, firstUser.OrganizationID, "chat sharing disabled")
+
+		// Seed the ACL directly as an owner subject: the HTTP UpdateChatACL
+		// endpoint rejects patches when chat sharing is disabled for the
+		// deployment, and the system-restricted subject lacks chat.share.
+		//nolint:gocritic // Owner context is needed to seed ACL in test setup.
+		ownerRoles, err := rbac.RoleIdentifiers{rbac.RoleOwner()}.Expand()
+		require.NoError(t, err)
+		ownerCtx := dbauthz.As(ctx, rbac.Subject{
+			ID:    "owner",
+			Roles: rbac.Roles(ownerRoles),
+			Scope: rbac.ExpandableScope(rbac.ScopeAll),
+		})
+		require.NoError(t, db.UpdateChatACLByID(ownerCtx, database.UpdateChatACLByIDParams{
+			ID: chat.ID,
+			UserACL: database.ChatACL{
+				viewer.ID.String(): database.ChatACLEntry{Permissions: []policy.Action{policy.ActionRead}},
+			},
+			GroupACL: database.ChatACL{},
+		}))
+
+		_, err = viewerClient.GetChat(ctx, chat.ID)
+		sdkErr := requireSDKError(t, err, http.StatusNotFound)
+		require.NotNil(t, sdkErr)
+	})
 }

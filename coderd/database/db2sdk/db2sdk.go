@@ -1810,13 +1810,13 @@ func ChatDebugStep(s database.ChatDebugStep) codersdk.ChatDebugStep {
 func ChatRows(rows []database.GetChatsRow, diffStatusesByChatID map[uuid.UUID]database.ChatDiffStatus) []codersdk.Chat {
 	result := make([]codersdk.Chat, len(rows))
 	for i, row := range rows {
-		diffStatus, ok := diffStatusesByChatID[row.Chat.ID]
+		diffStatus, ok := diffStatusesByChatID[row.ChatTable.ID]
 		if ok {
-			result[i] = Chat(row.Chat, &diffStatus, nil)
+			result[i] = Chat(row.ChatTable.Chat(), &diffStatus, nil)
 		} else {
-			result[i] = Chat(row.Chat, nil, nil)
+			result[i] = Chat(row.ChatTable.Chat(), nil, nil)
 			if diffStatusesByChatID != nil {
-				emptyDiffStatus := ChatDiffStatus(row.Chat.ID, nil)
+				emptyDiffStatus := ChatDiffStatus(row.ChatTable.ID, nil)
 				result[i].DiffStatus = &emptyDiffStatus
 			}
 		}

@@ -30,6 +30,9 @@ func ExtractChatParam(db database.Store) func(http.Handler) http.Handler {
 				return
 			}
 
+			// GetChatByID reads from the chats_with_acl view, so the
+			// returned UserACL/GroupACL are already resolved to the root
+			// chat's ACL for sub-chats (migration 000471).
 			chat, err := db.GetChatByID(ctx, chatID)
 			if httpapi.Is404Error(err) {
 				httpapi.ResourceNotFound(rw)
@@ -41,16 +44,6 @@ func ExtractChatParam(db database.Store) func(http.Handler) http.Handler {
 					Detail:  err.Error(),
 				})
 				return
-			}
-
-			// Sub-chats inherit the root's ACL. On lookup failure we fall back
-			// to the sub-chat's own empty ACL, which denies non-owners.
-			if chat.RootChatID.Valid {
-				root, rootErr := db.GetChatByID(ctx, chat.RootChatID.UUID)
-				if rootErr == nil {
-					chat.UserACL = root.UserACL
-					chat.GroupACL = root.GroupACL
-				}
 			}
 
 			ctx = context.WithValue(ctx, chatParamContextKey{}, chat)

@@ -2032,7 +2032,7 @@ func TestMediaToolResultRoundTrip(t *testing.T) {
 			RuntimeMs:           []int64{0, 0},
 		})
 		require.NoError(t, insertErr)
-		return chat
+		return chat.Chat()
 	}
 
 	// loadPrompt reads messages back from the DB via the same

@@ -364,7 +364,7 @@ func (api *API) listChats(rw http.ResponseWriter, r *http.Request) {
 	// Extract the Chat objects for diff status lookup.
 	dbChats := make([]database.Chat, len(chatRows))
 	for i, row := range chatRows {
-		dbChats[i] = row.Chat
+		dbChats[i] = row.ChatTable.Chat()
 	}
 
 	diffStatusesByChatID, err := api.getChatDiffStatusesByChatID(ctx, dbChats)
@@ -1880,7 +1880,7 @@ func (api *API) patchChat(rw http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		chat = updatedChat
+		chat = updatedChat.Chat()
 	}
 
 	if req.Archived != nil {
@@ -2010,7 +2010,7 @@ func (api *API) patchChat(rw http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		chat = updatedChat
+		chat = updatedChat.Chat()
 	}
 
 	if planModeUpdate != nil {
@@ -2029,7 +2029,7 @@ func (api *API) patchChat(rw http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		chat = updatedChat
+		chat = updatedChat.Chat()
 	}
 
 	rw.WriteHeader(http.StatusNoContent)
@@ -2607,7 +2607,7 @@ func (api *API) interruptChat(rw http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		chat = updatedChat
+		chat = updatedChat.Chat()
 	}
 
 	httpapi.Write(ctx, rw, http.StatusOK, db2sdk.Chat(chat, nil, nil))

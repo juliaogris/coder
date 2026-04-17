@@ -274,7 +274,7 @@ func TestCreateWorkspace_ReturnsSelectionErrorImmediately(t *testing.T) {
 			BuildID:     uuid.NullUUID{UUID: buildID, Valid: true},
 			AgentID:     uuid.NullUUID{},
 		}).
-		Return(database.Chat{
+		Return(database.ChatTable{
 			ID:          chatID,
 			WorkspaceID: uuid.NullUUID{UUID: workspaceID, Valid: true},
 		}, nil)
@@ -723,7 +723,7 @@ func TestCheckExistingWorkspace_InProgressBuildReturnsBuildID(t *testing.T) {
 			BuildID:     uuid.NullUUID{UUID: buildID, Valid: true},
 			AgentID:     uuid.NullUUID{},
 		}).
-		Return(database.Chat{
+		Return(database.ChatTable{
 			ID:          chatID,
 			WorkspaceID: uuid.NullUUID{UUID: workspaceID, Valid: true},
 		}, nil)
@@ -812,7 +812,7 @@ func TestCheckExistingWorkspace_InProgressBuildFailureReturnsBuildID(t *testing.
 			BuildID:     uuid.NullUUID{UUID: buildID, Valid: true},
 			AgentID:     uuid.NullUUID{},
 		}).
-		Return(database.Chat{
+		Return(database.ChatTable{
 			ID:          chatID,
 			WorkspaceID: uuid.NullUUID{UUID: workspaceID, Valid: true},
 		}, nil)
@@ -1175,7 +1175,7 @@ func TestCreateWorkspace_OnChatUpdatedFiresAfterBuild(t *testing.T) {
 	// UpdateChatWorkspaceBinding — triggers first OnChatUpdated.
 	db.EXPECT().
 		UpdateChatWorkspaceBinding(gomock.Any(), gomock.Any()).
-		Return(database.Chat{
+		Return(database.ChatTable{
 			ID:          chatID,
 			WorkspaceID: uuid.NullUUID{UUID: workspaceID, Valid: true},
 		}, nil)

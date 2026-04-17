@@ -158,7 +158,7 @@ func TestInterruptChatBroadcastsStatusAcrossInstances(t *testing.T) {
 	require.NoError(t, err)
 
 	runningWorker := uuid.New()
-	chat, err = db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
+	updatedTable, err := db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
 		ID:          chat.ID,
 		Status:      database.ChatStatusRunning,
 		WorkerID:    uuid.NullUUID{UUID: runningWorker, Valid: true},
@@ -166,6 +166,7 @@ func TestInterruptChatBroadcastsStatusAcrossInstances(t *testing.T) {
 		HeartbeatAt: sql.NullTime{Time: time.Now(), Valid: true},
 	})
 	require.NoError(t, err)
+	chat = updatedTable.Chat()
 
 	_, events, cancel, ok := replicaB.Subscribe(ctx, chat.ID, nil, 0)
 	require.True(t, ok)
@@ -519,7 +520,7 @@ func TestInterruptChatClearsWorkerInDatabase(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	chat, err = db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
+	updatedChat, err := db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
 		ID:          chat.ID,
 		Status:      database.ChatStatusRunning,
 		WorkerID:    uuid.NullUUID{UUID: uuid.New(), Valid: true},
@@ -527,6 +528,7 @@ func TestInterruptChatClearsWorkerInDatabase(t *testing.T) {
 		HeartbeatAt: sql.NullTime{Time: time.Now(), Valid: true},
 	})
 	require.NoError(t, err)
+	chat = updatedChat.Chat()
 
 	updated := replica.InterruptChat(ctx, chat)
 	require.Equal(t, database.ChatStatusWaiting, updated.Status)
@@ -556,7 +558,7 @@ func TestArchiveChatMovesPendingChatToWaiting(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	chat, err = db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
+	updatedChat, err := db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
 		ID:          chat.ID,
 		Status:      database.ChatStatusPending,
 		WorkerID:    uuid.NullUUID{},
@@ -565,6 +567,7 @@ func TestArchiveChatMovesPendingChatToWaiting(t *testing.T) {
 		LastError:   sql.NullString{},
 	})
 	require.NoError(t, err)
+	chat = updatedChat.Chat()
 
 	err = replica.ArchiveChat(ctx, chat)
 	require.NoError(t, err)
@@ -733,7 +736,7 @@ func TestUpdateChatHeartbeatsRequiresOwnership(t *testing.T) {
 	require.NoError(t, err)
 
 	workerID := uuid.New()
-	chat, err = db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
+	updatedChat, err := db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
 		ID:          chat.ID,
 		Status:      database.ChatStatusRunning,
 		WorkerID:    uuid.NullUUID{UUID: workerID, Valid: true},
@@ -741,6 +744,7 @@ func TestUpdateChatHeartbeatsRequiresOwnership(t *testing.T) {
 		HeartbeatAt: sql.NullTime{Time: time.Now(), Valid: true},
 	})
 	require.NoError(t, err)
+	chat = updatedChat.Chat()
 
 	// Wrong worker_id should return no IDs.
 	ids, err := db.UpdateChatHeartbeats(ctx, database.UpdateChatHeartbeatsParams{
@@ -781,7 +785,7 @@ func TestSendMessageQueueBehaviorQueuesWhenBusy(t *testing.T) {
 	require.NoError(t, err)
 
 	workerID := uuid.New()
-	chat, err = db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
+	updatedChat, err := db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
 		ID:          chat.ID,
 		Status:      database.ChatStatusRunning,
 		WorkerID:    uuid.NullUUID{UUID: workerID, Valid: true},
@@ -789,6 +793,7 @@ func TestSendMessageQueueBehaviorQueuesWhenBusy(t *testing.T) {
 		HeartbeatAt: sql.NullTime{Time: time.Now(), Valid: true},
 	})
 	require.NoError(t, err)
+	chat = updatedChat.Chat()
 
 	result, err := replica.SendMessage(ctx, chatd.SendMessageOptions{
 		ChatID:       chat.ID,
@@ -913,7 +918,7 @@ func TestSendMessageQueuesWhenWaitingWithQueuedBacklog(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	chat, err = db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
+	updatedChat, err := db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
 		ID:          chat.ID,
 		Status:      database.ChatStatusWaiting,
 		WorkerID:    uuid.NullUUID{},
@@ -922,6 +927,7 @@ func TestSendMessageQueuesWhenWaitingWithQueuedBacklog(t *testing.T) {
 		LastError:   sql.NullString{},
 	})
 	require.NoError(t, err)
+	chat = updatedChat.Chat()
 
 	result, err := replica.SendMessage(ctx, chatd.SendMessageOptions{
 		ChatID:  chat.ID,
@@ -975,7 +981,7 @@ func TestSendMessageInterruptBehaviorQueuesAndInterruptsWhenBusy(t *testing.T) {
 	// doesn't race with the manual status update below.
 	waitForChatProcessed(ctx, t, db, chat.ID, replica)
 
-	chat, err = db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
+	updatedChat, err := db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
 		ID:          chat.ID,
 		Status:      database.ChatStatusRunning,
 		WorkerID:    uuid.NullUUID{UUID: uuid.New(), Valid: true},
@@ -983,6 +989,7 @@ func TestSendMessageInterruptBehaviorQueuesAndInterruptsWhenBusy(t *testing.T) {
 		HeartbeatAt: sql.NullTime{Time: time.Now(), Valid: true},
 	})
 	require.NoError(t, err)
+	chat = updatedChat.Chat()
 
 	result, err := replica.SendMessage(ctx, chatd.SendMessageOptions{
 		ChatID:       chat.ID,
@@ -1066,7 +1073,7 @@ func TestEditMessageUpdatesAndTruncatesAndClearsQueue(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	chat, err = db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
+	updatedChat, err := db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
 		ID:          chat.ID,
 		Status:      database.ChatStatusRunning,
 		WorkerID:    uuid.NullUUID{UUID: uuid.New(), Valid: true},
@@ -1074,6 +1081,7 @@ func TestEditMessageUpdatesAndTruncatesAndClearsQueue(t *testing.T) {
 		HeartbeatAt: sql.NullTime{Time: time.Now(), Valid: true},
 	})
 	require.NoError(t, err)
+	chat = updatedChat.Chat()
 
 	editResult, err := replica.EditMessage(ctx, chatd.EditMessageOptions{
 		ChatID:          chat.ID,
@@ -1331,7 +1339,7 @@ func TestPromoteQueuedAllowsAlreadyQueuedMessageWhenUsageLimitReached(t *testing
 	// doesn't race with the manual status update below.
 	waitForChatProcessed(ctx, t, db, chat.ID, replica)
 
-	chat, err = db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
+	updatedChat, err := db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
 		ID:          chat.ID,
 		Status:      database.ChatStatusRunning,
 		WorkerID:    uuid.NullUUID{UUID: uuid.New(), Valid: true},
@@ -1339,6 +1347,7 @@ func TestPromoteQueuedAllowsAlreadyQueuedMessageWhenUsageLimitReached(t *testing
 		HeartbeatAt: sql.NullTime{Time: time.Now(), Valid: true},
 	})
 	require.NoError(t, err)
+	chat = updatedChat.Chat()
 
 	queuedResult, err := replica.SendMessage(ctx, chatd.SendMessageOptions{
 		ChatID:       chat.ID,
@@ -1375,7 +1384,7 @@ func TestPromoteQueuedAllowsAlreadyQueuedMessageWhenUsageLimitReached(t *testing
 	})
 	require.NoError(t, err)
 
-	chat, err = db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
+	updatedChat2, err := db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
 		ID:          chat.ID,
 		Status:      database.ChatStatusWaiting,
 		WorkerID:    uuid.NullUUID{},
@@ -1384,6 +1393,7 @@ func TestPromoteQueuedAllowsAlreadyQueuedMessageWhenUsageLimitReached(t *testing
 		LastError:   sql.NullString{},
 	})
 	require.NoError(t, err)
+	chat = updatedChat2.Chat()
 
 	result, err := replica.PromoteQueued(ctx, chatd.PromoteQueuedOptions{
 		ChatID:          chat.ID,
@@ -2041,7 +2051,7 @@ func TestUpdateChatStatusPersistsLastError(t *testing.T) {
 
 	// Simulate a chat that failed with an error.
 	errorMessage := "stream response: status 500: internal server error"
-	chat, err = db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
+	updatedChat, err := db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
 		ID:          chat.ID,
 		Status:      database.ChatStatusError,
 		WorkerID:    uuid.NullUUID{},
@@ -2050,6 +2060,7 @@ func TestUpdateChatStatusPersistsLastError(t *testing.T) {
 		LastError:   sql.NullString{String: errorMessage, Valid: true},
 	})
 	require.NoError(t, err)
+	chat = updatedChat
 	require.Equal(t, database.ChatStatusError, chat.Status)
 	require.Equal(t, sql.NullString{String: errorMessage, Valid: true}, chat.LastError)
 
@@ -2061,7 +2072,7 @@ func TestUpdateChatStatusPersistsLastError(t *testing.T) {
 
 	// Verify the error is cleared when the chat transitions to a
 	// non-error status (e.g. pending after a retry).
-	chat, err = db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
+	updatedChat2, err := db.UpdateChatStatus(ctx, database.UpdateChatStatusParams{
 		ID:          chat.ID,
 		Status:      database.ChatStatusPending,
 		WorkerID:    uuid.NullUUID{},
@@ -2070,6 +2081,7 @@ func TestUpdateChatStatusPersistsLastError(t *testing.T) {
 		LastError:   sql.NullString{},
 	})
 	require.NoError(t, err)
+	chat = updatedChat2
 	require.Equal(t, database.ChatStatusPending, chat.Status)
 	require.False(t, chat.LastError.Valid)
 
@@ -3451,12 +3463,13 @@ func TestStoppedWorkspaceWithPersistedAgentBindingDoesNotBlockChat(t *testing.T)
 
 	build, err := db.GetLatestWorkspaceBuildByWorkspaceID(ctx, ws.ID)
 	require.NoError(t, err)
-	chat, err = db.UpdateChatBuildAgentBinding(ctx, database.UpdateChatBuildAgentBindingParams{
+	updatedChat, err := db.UpdateChatBuildAgentBinding(ctx, database.UpdateChatBuildAgentBindingParams{
 		ID:      chat.ID,
 		BuildID: uuid.NullUUID{UUID: build.ID, Valid: true},
 		AgentID: uuid.NullUUID{UUID: dbAgent.ID, Valid: true},
 	})
 	require.NoError(t, err)
+	chat = updatedChat.Chat()
 
 	dbfake.WorkspaceBuild(t, db, ws).Seed(database.WorkspaceBuild{
 		Transition:  database.WorkspaceTransitionStop,
@@ -4828,8 +4841,8 @@ func TestComputerUseSubagentToolsAndModel(t *testing.T) {
 	require.NoError(t, err)
 	var children []database.Chat
 	for _, c := range allChats {
-		if c.Chat.ParentChatID.Valid && c.Chat.ParentChatID.UUID == chat.ID {
-			children = append(children, c.Chat)
+		if c.ChatTable.ParentChatID.Valid && c.ChatTable.ParentChatID.UUID == chat.ID {
+			children = append(children, c.ChatTable.Chat())
 		}
 	}
 	require.Len(t, children, 1)

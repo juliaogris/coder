@@ -234,7 +234,7 @@ func CreateWorkspace(organizationID uuid.UUID, db database.Store, options Create
 						slog.Error(err),
 					)
 				} else if options.OnChatUpdated != nil {
-					options.OnChatUpdated(updatedChat)
+					options.OnChatUpdated(updatedChat.Chat())
 				}
 			}
 
@@ -382,7 +382,7 @@ func (o CreateWorkspaceOptions) checkExistingWorkspace(
 				slog.Error(bindErr),
 			)
 		} else if o.OnChatUpdated != nil {
-			o.OnChatUpdated(updatedChat)
+			o.OnChatUpdated(updatedChat.Chat())
 		}
 		if err := waitForBuild(ctx, db, build.ID); err != nil {
 			return existingWorkspaceResult{

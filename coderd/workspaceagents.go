@@ -2725,7 +2725,7 @@ func resolveAgentChat(
 			if chat.OwnerID != workspaceOwnerID {
 				continue
 			}
-			ownerChats = append(ownerChats, chat)
+			ownerChats = append(ownerChats, chat.Chat())
 		}
 		return resolveDefaultAgentChat(ownerChats)
 	}
@@ -2743,13 +2743,13 @@ func resolveAgentChat(
 	if chat.OwnerID != workspaceOwnerID {
 		return database.Chat{}, errChatDoesNotBelongToWorkspaceOwner
 	}
-	if !isActiveAgentChat(chat) {
+	if !isActiveAgentChat(chat.ChatTable()) {
 		return database.Chat{}, errChatNotActive
 	}
 	return chat, nil
 }
 
-func isActiveAgentChat(chat database.Chat) bool {
+func isActiveAgentChat(chat database.ChatTable) bool {
 	if chat.Archived {
 		return false
 	}

@@ -14,7 +14,7 @@ import (
 type sqlcQuerier interface {
 	// Acquires up to @num_chats pending chats for processing. Uses SKIP LOCKED
 	// to prevent multiple replicas from acquiring the same chat.
-	AcquireChats(ctx context.Context, arg AcquireChatsParams) ([]Chat, error)
+	AcquireChats(ctx context.Context, arg AcquireChatsParams) ([]ChatTable, error)
 	// Blocks until the lock is acquired.
 	//
 	// This must be called from within a transaction. The lock will be automatically
@@ -54,7 +54,7 @@ type sqlcQuerier interface {
 	ActivityBumpWorkspace(ctx context.Context, arg ActivityBumpWorkspaceParams) error
 	// AllUserIDs returns all UserIDs regardless of user status or deletion.
 	AllUserIDs(ctx context.Context, includeSystem bool) ([]uuid.UUID, error)
-	ArchiveChatByID(ctx context.Context, id uuid.UUID) ([]Chat, error)
+	ArchiveChatByID(ctx context.Context, id uuid.UUID) ([]ChatTable, error)
 	// Archiving templates is a soft delete action, so is reversible.
 	// Archiving prevents the version from being used and discovered
 	// by listing.
@@ -229,7 +229,7 @@ type sqlcQuerier interface {
 	GetAPIKeysByUserID(ctx context.Context, arg GetAPIKeysByUserIDParams) ([]APIKey, error)
 	GetAPIKeysLastUsedAfter(ctx context.Context, lastUsed time.Time) ([]APIKey, error)
 	GetActiveAISeatCount(ctx context.Context) (int64, error)
-	GetActiveChatsByAgentID(ctx context.Context, agentID uuid.UUID) ([]Chat, error)
+	GetActiveChatsByAgentID(ctx context.Context, agentID uuid.UUID) ([]ChatTable, error)
 	GetActivePresetPrebuildSchedules(ctx context.Context) ([]TemplateVersionPresetPrebuildSchedule, error)
 	GetActiveUserCount(ctx context.Context, includeSystem bool) (int64, error)
 	GetActiveWorkspaceBuildsByTemplateID(ctx context.Context, templateID uuid.UUID) ([]WorkspaceBuild, error)
@@ -257,8 +257,17 @@ type sqlcQuerier interface {
 	// are included.
 	GetAuthorizationUserRoles(ctx context.Context, userID uuid.UUID) (GetAuthorizationUserRolesRow, error)
 	GetChatACLByID(ctx context.Context, id uuid.UUID) (GetChatACLByIDRow, error)
+	// Reads from the chats_with_acl view so Chat.RBACObject() authorizes
+	// against the effective ACL. Sub-chats inherit the root chat's ACL via
+	// COALESCE (migration 000471); roots and orphaned sub-chats fall back
+	// to their own stored ACL. Reading the base chats table would leave
+	// dbauthz checking empty user_acl/group_acl for every sub-chat and
+	// denying shared viewers with a 404 on /chats/{sub}. The
+	// `chats_with_acl AS chats` alias preserves the Chat row type so
+	// downstream RBACObject() and callers continue to compile unchanged
+	// (same pattern GetChats uses below).
 	GetChatByID(ctx context.Context, id uuid.UUID) (Chat, error)
-	GetChatByIDForUpdate(ctx context.Context, id uuid.UUID) (Chat, error)
+	GetChatByIDForUpdate(ctx context.Context, id uuid.UUID) (ChatTable, error)
 	// Per-root-chat cost breakdown for a single user within a date range.
 	// Groups by root_chat_id so forked chats roll up under their root.
 	// Only counts assistant-role messages.
@@ -335,7 +344,7 @@ type sqlcQuerier interface {
 	// Returns "0s" (disabled) when no value has been configured.
 	GetChatWorkspaceTTL(ctx context.Context) (string, error)
 	GetChats(ctx context.Context, arg GetChatsParams) ([]GetChatsRow, error)
-	GetChatsByWorkspaceIDs(ctx context.Context, ids []uuid.UUID) ([]Chat, error)
+	GetChatsByWorkspaceIDs(ctx context.Context, ids []uuid.UUID) ([]ChatTable, error)
 	// Retrieves chats updated after the given timestamp for telemetry
 	// snapshot collection. Uses updated_at so that long-running chats
 	// still appear in each snapshot window while they are active.
@@ -543,7 +552,7 @@ type sqlcQuerier interface {
 	//   1. Running chats whose heartbeat has expired (worker crash).
 	//   2. Chats awaiting client action (requires_action) past the
 	//      timeout threshold (client disappeared).
-	GetStaleChats(ctx context.Context, staleThreshold time.Time) ([]Chat, error)
+	GetStaleChats(ctx context.Context, staleThreshold time.Time) ([]ChatTable, error)
 	GetTailnetPeers(ctx context.Context, id uuid.UUID) ([]TailnetPeer, error)
 	GetTailnetTunnelPeerBindingsBatch(ctx context.Context, ids []uuid.UUID) ([]GetTailnetTunnelPeerBindingsBatchRow, error)
 	GetTailnetTunnelPeerIDsBatch(ctx context.Context, ids []uuid.UUID) ([]GetTailnetTunnelPeerIDsBatchRow, error)
@@ -772,7 +781,7 @@ type sqlcQuerier interface {
 	// every member of the org.
 	InsertAllUsersGroup(ctx context.Context, organizationID uuid.UUID) (Group, error)
 	InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) (AuditLog, error)
-	InsertChat(ctx context.Context, arg InsertChatParams) (Chat, error)
+	InsertChat(ctx context.Context, arg InsertChatParams) (ChatTable, error)
 	InsertChatDebugRun(ctx context.Context, arg InsertChatDebugRunParams) (ChatDebugRun, error)
 	InsertChatDebugStep(ctx context.Context, arg InsertChatDebugStepParams) (ChatDebugStep, error)
 	InsertChatFile(ctx context.Context, arg InsertChatFileParams) (InsertChatFileRow, error)
@@ -949,7 +958,7 @@ type sqlcQuerier interface {
 	// handled automatically by FK cascades on chat_file_links: when
 	// dbpurge deletes a chat_files row, the corresponding
 	// chat_file_links rows are cascade-deleted by PostgreSQL.
-	UnarchiveChatByID(ctx context.Context, id uuid.UUID) ([]Chat, error)
+	UnarchiveChatByID(ctx context.Context, id uuid.UUID) ([]ChatTable, error)
 	// This will always work regardless of the current state of the template version.
 	UnarchiveTemplateVersion(ctx context.Context, arg UnarchiveTemplateVersionParams) error
 	UnfavoriteWorkspace(ctx context.Context, id uuid.UUID) error
@@ -958,8 +967,8 @@ type sqlcQuerier interface {
 	UpdateAIBridgeInterceptionEnded(ctx context.Context, arg UpdateAIBridgeInterceptionEndedParams) (AIBridgeInterception, error)
 	UpdateAPIKeyByID(ctx context.Context, arg UpdateAPIKeyByIDParams) error
 	UpdateChatACLByID(ctx context.Context, arg UpdateChatACLByIDParams) error
-	UpdateChatBuildAgentBinding(ctx context.Context, arg UpdateChatBuildAgentBindingParams) (Chat, error)
-	UpdateChatByID(ctx context.Context, arg UpdateChatByIDParams) (Chat, error)
+	UpdateChatBuildAgentBinding(ctx context.Context, arg UpdateChatBuildAgentBindingParams) (ChatTable, error)
+	UpdateChatByID(ctx context.Context, arg UpdateChatByIDParams) (ChatTable, error)
 	// Uses COALESCE so that passing NULL from Go means "keep the
 	// existing value."  This is intentional: debug rows follow a
 	// write-once-finalize pattern where fields are set at creation
@@ -975,25 +984,25 @@ type sqlcQuerier interface {
 	// worker. Returns the IDs that were actually updated so the
 	// caller can detect stolen or completed chats via set-difference.
 	UpdateChatHeartbeats(ctx context.Context, arg UpdateChatHeartbeatsParams) ([]uuid.UUID, error)
-	UpdateChatLabelsByID(ctx context.Context, arg UpdateChatLabelsByIDParams) (Chat, error)
+	UpdateChatLabelsByID(ctx context.Context, arg UpdateChatLabelsByIDParams) (ChatTable, error)
 	// Updates the cached injected context parts (AGENTS.md +
 	// skills) on the chat row. Called only when context changes
 	// (first workspace attach or agent change). updated_at is
 	// intentionally not touched to avoid reordering the chat list.
-	UpdateChatLastInjectedContext(ctx context.Context, arg UpdateChatLastInjectedContextParams) (Chat, error)
-	UpdateChatLastModelConfigByID(ctx context.Context, arg UpdateChatLastModelConfigByIDParams) (Chat, error)
+	UpdateChatLastInjectedContext(ctx context.Context, arg UpdateChatLastInjectedContextParams) (ChatTable, error)
+	UpdateChatLastModelConfigByID(ctx context.Context, arg UpdateChatLastModelConfigByIDParams) (ChatTable, error)
 	// Updates the last read message ID for a chat. This is used to track
 	// which messages the owner has seen, enabling unread indicators.
 	UpdateChatLastReadMessageID(ctx context.Context, arg UpdateChatLastReadMessageIDParams) error
-	UpdateChatMCPServerIDs(ctx context.Context, arg UpdateChatMCPServerIDsParams) (Chat, error)
+	UpdateChatMCPServerIDs(ctx context.Context, arg UpdateChatMCPServerIDsParams) (ChatTable, error)
 	UpdateChatMessageByID(ctx context.Context, arg UpdateChatMessageByIDParams) (ChatMessage, error)
 	UpdateChatModelConfig(ctx context.Context, arg UpdateChatModelConfigParams) (ChatModelConfig, error)
 	UpdateChatPinOrder(ctx context.Context, arg UpdateChatPinOrderParams) error
-	UpdateChatPlanModeByID(ctx context.Context, arg UpdateChatPlanModeByIDParams) (Chat, error)
+	UpdateChatPlanModeByID(ctx context.Context, arg UpdateChatPlanModeByIDParams) (ChatTable, error)
 	UpdateChatProvider(ctx context.Context, arg UpdateChatProviderParams) (ChatProvider, error)
-	UpdateChatStatus(ctx context.Context, arg UpdateChatStatusParams) (Chat, error)
-	UpdateChatStatusPreserveUpdatedAt(ctx context.Context, arg UpdateChatStatusPreserveUpdatedAtParams) (Chat, error)
-	UpdateChatWorkspaceBinding(ctx context.Context, arg UpdateChatWorkspaceBindingParams) (Chat, error)
+	UpdateChatStatus(ctx context.Context, arg UpdateChatStatusParams) (ChatTable, error)
+	UpdateChatStatusPreserveUpdatedAt(ctx context.Context, arg UpdateChatStatusPreserveUpdatedAtParams) (ChatTable, error)
+	UpdateChatWorkspaceBinding(ctx context.Context, arg UpdateChatWorkspaceBindingParams) (ChatTable, error)
 	UpdateCryptoKeyDeletesAt(ctx context.Context, arg UpdateCryptoKeyDeletesAtParams) (CryptoKey, error)
 	UpdateCustomRole(ctx context.Context, arg UpdateCustomRoleParams) (CustomRole, error)
 	UpdateExternalAuthLink(ctx context.Context, arg UpdateExternalAuthLinkParams) (ExternalAuthLink, error)

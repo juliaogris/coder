@@ -121,7 +121,7 @@ func StartWorkspace(options StartWorkspaceOptions) fantasy.AgentTool {
 						slog.Error(bindErr),
 					)
 				} else if options.OnChatUpdated != nil {
-					options.OnChatUpdated(updatedChat)
+					options.OnChatUpdated(updatedChat.Chat())
 				}
 				if err := waitForBuild(ctx, options.DB, build.ID); err != nil {
 					// newBuildError returns via toolResponse (IsError: false)
@@ -198,7 +198,7 @@ func StartWorkspace(options StartWorkspaceOptions) fantasy.AgentTool {
 					slog.Error(bindErr),
 				)
 			} else if options.OnChatUpdated != nil {
-				options.OnChatUpdated(updatedChat)
+				options.OnChatUpdated(updatedChat.Chat())
 			}
 			if err := waitForBuild(ctx, options.DB, startBuild.ID); err != nil {
 				return buildToolResponse(newBuildError(
