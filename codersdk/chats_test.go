@@ -598,3 +598,41 @@ func TestParseChatWorkspaceTTL(t *testing.T) {
 		})
 	}
 }
+
+// TestChatMessagePartForViewerParity asserts every exported field on
+// ChatMessagePart is reachable through ChatMessagePartForViewer with the
+// same JSON tag, type, and variant tag. The viewer type embeds the base
+// type, so adding a new field to ChatMessagePart is automatically
+// forwarded to viewers — this test pins that invariant so a future
+// refactor cannot silently break it.
+func TestChatMessagePartForViewerParity(t *testing.T) {
+	t.Parallel()
+
+	partType := reflect.TypeOf(codersdk.ChatMessagePart{})
+	viewerType := reflect.TypeOf(codersdk.ChatMessagePartForViewer{})
+
+	for i := 0; i < partType.NumField(); i++ {
+		field := partType.Field(i)
+		if !field.IsExported() {
+			continue
+		}
+		viewerField, ok := viewerType.FieldByName(field.Name)
+		require.True(t, ok,
+			"ChatMessagePartForViewer missing field %q; embedding should promote it",
+			field.Name)
+		require.Equal(t, field.Type, viewerField.Type,
+			"field %q: type drift between ChatMessagePart and ChatMessagePartForViewer",
+			field.Name)
+		require.Equal(t, field.Tag.Get("json"), viewerField.Tag.Get("json"),
+			"field %q: json tag drift", field.Name)
+		require.Equal(t, field.Tag.Get("variants"), viewerField.Tag.Get("variants"),
+			"field %q: variants tag drift", field.Name)
+		require.Equal(t, field.Tag.Get("typescript"), viewerField.Tag.Get("typescript"),
+			"field %q: typescript tag drift", field.Name)
+	}
+
+	// Sanity: the viewer-only addition must exist.
+	redacted, ok := viewerType.FieldByName("RedactedType")
+	require.True(t, ok, "RedactedType must exist on ChatMessagePartForViewer")
+	require.Equal(t, "redacted_type,omitempty", redacted.Tag.Get("json"))
+}
