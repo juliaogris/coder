@@ -1297,6 +1297,7 @@ type ChatMode string
 
 const (
 	ChatModeComputerUse ChatMode = "computer_use"
+	ChatModeExplore     ChatMode = "explore"
 )
 
 func (e *ChatMode) Scan(src interface{}) error {
@@ -1336,7 +1337,8 @@ func (ns NullChatMode) Value() (driver.Value, error) {
 
 func (e ChatMode) Valid() bool {
 	switch e {
-	case ChatModeComputerUse:
+	case ChatModeComputerUse,
+		ChatModeExplore:
 		return true
 	}
 	return false
@@ -1345,6 +1347,7 @@ func (e ChatMode) Valid() bool {
 func AllChatModeValues() []ChatMode {
 	return []ChatMode{
 		ChatModeComputerUse,
+		ChatModeExplore,
 	}
 }
 
