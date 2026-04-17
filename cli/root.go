@@ -101,6 +101,7 @@ const (
 func (r *RootCmd) CoreSubcommands() []*serpent.Command {
 	// Please re-sort this list alphabetically if you change it!
 	return []*serpent.Command{
+		r.agentsCommand(),
 		r.completion(),
 		r.dotfiles(),
 		externalAuth(),
@@ -164,7 +165,6 @@ func (r *RootCmd) AGPLExperimental() []*serpent.Command {
 		r.promptExample(),
 		r.rptyCommand(),
 		r.syncCommand(),
-		r.agentsCommand(),
 	}
 }
 
