@@ -1,6 +1,5 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { toast } from "sonner";
 import { API } from "#/api/api";
 import {
 	MockTemplate,
@@ -62,7 +61,7 @@ describe("TemplateVariablesPage", () => {
 	});
 
 	it("user submits the form successfully", async () => {
-		vi.spyOn(API, "getTemplateByName").mockResolvedValueOnce(MockTemplate);
+		vi.spyOn(API, "getTemplateByName").mockResolvedValue(MockTemplate);
 		vi.spyOn(API, "getTemplateVersion").mockResolvedValue(MockTemplateVersion);
 		vi.spyOn(API, "getTemplateVersionVariables").mockResolvedValueOnce([
 			MockTemplateVersionVariable1,
@@ -77,16 +76,6 @@ describe("TemplateVariablesPage", () => {
 
 		await renderTemplateVariablesPage();
 
-		const firstVariable = await screen.findByLabelText(
-			MockTemplateVersionVariable1.name,
-		);
-		expect(firstVariable).toBeDefined();
-
-		const secondVariable = await screen.findByLabelText(
-			MockTemplateVersionVariable2.name,
-		);
-		expect(secondVariable).toBeDefined();
-
 		// Fill the form
 		const firstVariableField = await screen.findByLabelText(
 			MockTemplateVersionVariable1.name,
@@ -100,16 +89,12 @@ describe("TemplateVariablesPage", () => {
 		await userEvent.clear(secondVariableField);
 		await userEvent.type(secondVariableField, validFormValues.second_variable);
 
-		// Submit the form
-		const toastSuccessSpy = vi.spyOn(toast, "success");
+		// Submit the form and wait for the success toast to appear in the DOM.
 		const submitButton = await screen.findByText(/save/i);
 		await userEvent.click(submitButton);
 
-		await waitFor(() => {
-			expect(toastSuccessSpy).toHaveBeenCalledWith(
-				`Template "test-template" variables updated successfully.`,
-			);
-		});
-		toastSuccessSpy.mockRestore();
+		await screen.findByText(
+			'Template "test-template" variables updated successfully.',
+		);
 	});
 });
