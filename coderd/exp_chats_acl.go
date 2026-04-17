@@ -47,7 +47,7 @@ func (api *API) chatACL(rw http.ResponseWriter, r *http.Request) {
 		}
 		userIDs = append(userIDs, id)
 	}
-	// nolint:gocritic // Display info must be returned regardless of the caller's org:read perms.
+	//nolint:gocritic
 	dbUsers, err := api.Database.GetUsersByIDs(dbauthz.AsSystemRestricted(ctx), userIDs)
 	if err != nil && !xerrors.Is(err, sql.ErrNoRows) {
 		httpapi.InternalServerError(rw, err)
@@ -77,7 +77,7 @@ func (api *API) chatACL(rw http.ResponseWriter, r *http.Request) {
 
 	dbGroups := make([]database.GetGroupsRow, 0)
 	if len(groupIDs) > 0 {
-		// nolint:gocritic // Display info must be returned regardless of the caller's group:read perms.
+		//nolint:gocritic
 		dbGroups, err = api.Database.GetGroups(dbauthz.AsSystemRestricted(ctx), database.GetGroupsParams{GroupIds: groupIDs})
 		if err != nil && !xerrors.Is(err, sql.ErrNoRows) {
 			httpapi.InternalServerError(rw, err)
@@ -88,7 +88,7 @@ func (api *API) chatACL(rw http.ResponseWriter, r *http.Request) {
 	groups := make([]codersdk.ChatGroup, 0, len(dbGroups))
 	for _, it := range dbGroups {
 		var members []database.GroupMember
-		// nolint:gocritic // Display info must be returned regardless of the caller's group:read perms.
+		//nolint:gocritic
 		members, err = api.Database.GetGroupMembersByGroupID(dbauthz.AsSystemRestricted(ctx), database.GetGroupMembersByGroupIDParams{
 			GroupID:       it.Group.ID,
 			IncludeSystem: false,
@@ -235,11 +235,6 @@ func (api *API) deleteChatACL(rw http.ResponseWriter, r *http.Request) {
 	rw.WriteHeader(http.StatusNoContent)
 }
 
-// effectiveShareFlagsForViewer returns the OR of the viewer's direct
-// user entry and every group entry for groups they belong to. Callers
-// must gate on owner-vs-viewer before invoking this helper; passing
-// the owner here would return empty flags because the owner never has
-// an ACL entry referencing themselves.
 func (api *API) effectiveShareFlagsForViewer(
 	ctx context.Context,
 	chat database.Chat,
@@ -254,7 +249,7 @@ func (api *API) effectiveShareFlagsForViewer(
 		return flags, nil
 	}
 
-	// nolint:gocritic // Group membership lookup must ignore the viewer's group:read perms.
+	//nolint:gocritic
 	groups, gErr := api.Database.GetGroups(dbauthz.AsSystemRestricted(ctx), database.GetGroupsParams{
 		HasMemberID: viewerID,
 	})
@@ -277,9 +272,6 @@ func (api *API) effectiveShareFlagsForViewer(
 
 func writeChatACLSubChatError(ctx context.Context, rw http.ResponseWriter, chat database.Chat) {
 	if !chat.IsSubChat() {
-		// Developer error: every caller must guard with chat.IsSubChat()
-		// before invoking this helper. Emitting the canned error on a root
-		// chat would point the client at a nil UUID.
 		panic("developer error: writeChatACLSubChatError called on non-sub-chat")
 	}
 	var rootID uuid.UUID
@@ -341,7 +333,7 @@ func convertToChatRole(actions []policy.Action) codersdk.ChatRole {
 }
 
 func (api *API) allowChatSharing(ctx context.Context, rw http.ResponseWriter, chat database.Chat) bool {
-	// nolint:gocritic // This gate must ignore the caller's org:read perms.
+	//nolint:gocritic
 	org, err := api.Database.GetOrganizationByID(dbauthz.AsSystemRestricted(ctx), chat.OrganizationID)
 	if err != nil {
 		httpapi.InternalServerError(rw, err)
@@ -354,7 +346,7 @@ func (api *API) allowChatSharing(ctx context.Context, rw http.ResponseWriter, ch
 		})
 		return false
 	case database.ShareableChatOwnersServiceAccounts:
-		// nolint:gocritic // Owner lookup must ignore the caller's user:read perms.
+		//nolint:gocritic
 		owner, err := api.Database.GetUserByID(dbauthz.AsSystemRestricted(ctx), chat.OwnerID)
 		if err != nil {
 			httpapi.InternalServerError(rw, err)

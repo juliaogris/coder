@@ -156,8 +156,6 @@ const (
 	ChatMessagePartTypeContextFile   ChatMessagePartType = "context-file"
 	ChatMessagePartTypeSkill         ChatMessagePartType = "skill"
 
-	// ChatMessagePartTypeRedacted is emitted only on ChatMessagePartForViewer;
-	// the structural separation guarantees it cannot be persisted.
 	ChatMessagePartTypeRedacted ChatMessagePartType = "redacted"
 )
 
@@ -295,9 +293,6 @@ func (p *ChatMessagePart) StripInternal() {
 	p.ContextFileSkillMetaFile = ""
 }
 
-// ChatMessagePartForViewer is the viewer-only superset of ChatMessagePart
-// that admits the "redacted" Type. No write or persistence path references
-// this type, so a redacted marker cannot leak into chat_messages.content.
 type ChatMessagePartForViewer struct {
 	Type              ChatMessagePartType `json:"type"`
 	Text              string              `json:"text" variants:"text,reasoning"`
@@ -378,9 +373,6 @@ type ChatForViewer struct {
 	ClientType          ChatClientType             `json:"client_type"`
 }
 
-// ViewerShareFlags are the per-viewer toggles applied by the redaction
-// filter. Owner must be pre-resolved; passing {true, true} disables
-// redaction entirely.
 type ViewerShareFlags struct {
 	ShareToolCalls   bool
 	ShareAttachments bool
@@ -403,8 +395,6 @@ func FilterChatMessagePartsForViewer(
 	return out
 }
 
-// FilterChatMessageForViewer does not special-case the owner. Callers
-// responsible for resolving the owner must pass {true, true}.
 func FilterChatMessageForViewer(
 	m ChatMessage,
 	flags ViewerShareFlags,
@@ -3070,8 +3060,7 @@ type PRInsightsPullRequest struct {
 type ChatRole string
 
 const (
-	ChatRoleRead ChatRole = "read"
-	// ChatRoleDeleted removes an entry when used in UpdateChatACL.
+	ChatRoleRead    ChatRole = "read"
 	ChatRoleDeleted ChatRole = ""
 )
 
@@ -3102,7 +3091,6 @@ type ChatACL struct {
 	Groups []ChatGroup `json:"groups"`
 }
 
-// ChatShareEntry is a PATCH /acl entry. Omitted bools default to false.
 type ChatShareEntry struct {
 	Role             ChatRole `json:"role" enums:"read"`
 	ShareToolCalls   bool     `json:"share_tool_calls,omitempty"`

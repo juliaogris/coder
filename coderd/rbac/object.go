@@ -245,9 +245,8 @@ var (
 	chatACLDisabled      atomic.Bool
 )
 
-// SetWorkspaceACLDisabled is an operator kill switch for workspace
-// sharing. Call once at coderd startup; later calls race with readers
-// in authorization paths.
+// SetWorkspaceACLDisabled disables/enables workspace sharing for the
+// deployment.
 func SetWorkspaceACLDisabled(v bool) {
 	workspaceACLDisabled.Store(v)
 }
@@ -265,8 +264,6 @@ func SetChatACLDisabled(v bool) {
 	chatACLDisabled.Store(v)
 }
 
-// ChatACLDisabled returns true if chat sharing is disabled for the
-// deployment.
 func ChatACLDisabled() bool {
 	return chatACLDisabled.Load()
 }

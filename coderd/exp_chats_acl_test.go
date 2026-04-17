@@ -82,10 +82,6 @@ func TestPatchChatACL_AddsUserAndGroup(t *testing.T) {
 func TestPatchChatACL_RejectsNonReadRole(t *testing.T) {
 	t.Parallel()
 
-	// Keep the reject cases and one happy-path so the test pins both
-	// directions: anything that is not exactly "read" (canonical) or
-	// "" (ChatRoleDeleted) must be refused. "deleted" is the spelled-
-	// out word, not the empty sentinel, so it must also fail.
 	cases := []struct {
 		name   string
 		role   codersdk.ChatRole
@@ -305,9 +301,6 @@ func TestListChats_SharedFilter(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, res.StatusCode)
 }
 
-// insertShareTestAssistantMessage inserts a single assistant message
-// with every part type the filter treats specially, plus text and
-// reasoning (which must always pass through).
 func insertShareTestAssistantMessage(
 	ctx context.Context,
 	t *testing.T,
@@ -357,8 +350,6 @@ func insertShareTestAssistantMessage(
 	require.NoError(t, err)
 }
 
-// insertSharedChatFile inserts a chat_files row and links it to the chat
-// so the owner's Chat.Files is populated.
 func insertSharedChatFile(
 	ctx context.Context,
 	t *testing.T,
@@ -367,7 +358,7 @@ func insertSharedChatFile(
 ) uuid.UUID {
 	t.Helper()
 
-	//nolint:gocritic // Using AsChatd to mimic the chatd background worker that normally inserts files.
+	//nolint:gocritic
 	chatdCtx := dbauthz.AsChatd(ctx)
 	row, err := db.InsertChatFile(chatdCtx, database.InsertChatFileParams{
 		OwnerID:        ownerID,
@@ -387,8 +378,6 @@ func insertSharedChatFile(
 	return row.ID
 }
 
-// typeCounts builds a multiset of part types keyed by redacted_type
-// where applicable, so tests can assert ordering + redaction exactly.
 func typeCounts(parts []codersdk.ChatMessagePartForViewer) []string {
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
@@ -612,8 +601,6 @@ func TestGetChatMessages_GroupEntryFlags(t *testing.T) {
 		typeCounts(assistant.Content),
 	)
 
-	// Group entry grants tool-calls only; Chat.Files must stay empty
-	// because no entry grants ShareAttachments.
 	res, err := viewerClient.Request(ctx, http.MethodGet, "/api/experimental/chats/"+chat.ID.String(), nil)
 	require.NoError(t, err)
 	defer res.Body.Close()
@@ -641,8 +628,6 @@ func TestGetChatMessages_UnionAcrossEntries(t *testing.T) {
 	fileID := insertSharedChatFile(ctx, t, db, firstUser.OrganizationID, firstUser.UserID, chat.ID)
 	insertShareTestAssistantMessage(ctx, t, db, chat.ID, modelConfig.ID, fileID)
 
-	// Attribution: user entry contributes ShareAttachments, group entry
-	// contributes ShareToolCalls. Union must unredact both halves.
 	err := ownerClient.UpdateChatACL(ctx, chat.ID, codersdk.UpdateChatACL{
 		UserRoles: map[string]codersdk.ChatShareEntry{
 			viewer.ID.String(): {Role: codersdk.ChatRoleRead, ShareAttachments: true},
@@ -670,8 +655,6 @@ func TestGetChatMessages_UnionAcrossEntries(t *testing.T) {
 		typeCounts(assistant.Content),
 	)
 
-	// Chat.Files must surface when ShareAttachments is granted by the
-	// user entry — even though the group entry is attachments-off.
 	res, err := viewerClient.Request(ctx, http.MethodGet, "/api/experimental/chats/"+chat.ID.String(), nil)
 	require.NoError(t, err)
 	defer res.Body.Close()
@@ -775,11 +758,6 @@ func findAssistantMessageForViewer(t *testing.T, msgs []codersdk.ChatMessageForV
 	return codersdk.ChatMessageForViewer{}
 }
 
-// TestSubChatAccess_ViewerViaRootACL exercises the core promise of
-// migration 000472: a viewer granted ChatRoleRead on a root chat can
-// reach the sub-chat through the HTTP API. The stored user_acl on the
-// sub-chat row is empty by design; the chats_with_acl view must supply
-// the root ACL for dbauthz to authorize the viewer.
 func TestSubChatAccess_ViewerViaRootACL(t *testing.T) {
 	t.Parallel()
 
@@ -814,21 +792,16 @@ func TestSubChatAccess_ViewerViaRootACL(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// (1) GET /chats/{subChatID} must return 200 for the viewer.
 	res, err := viewerClient.Request(ctx, http.MethodGet, "/api/experimental/chats/"+subChat.ID.String(), nil)
 	require.NoError(t, err)
 	defer res.Body.Close()
 	require.Equal(t, http.StatusOK, res.StatusCode,
 		"viewer with root-chat ChatRoleRead must reach the sub-chat via the effective ACL")
 
-	// (2) GET /chats/{subChatID}/messages must return 200 with the
-	// seeded assistant message.
 	msgs, err := viewerClient.GetChatMessagesForViewer(ctx, subChat.ID, nil)
 	require.NoError(t, err)
 	_ = findAssistantMessageForViewer(t, msgs.Messages)
 
-	// (3) Write path still rejects: sub-chats cannot have their own
-	// ACL set, even by the owner.
 	err = ownerClient.UpdateChatACL(ctx, subChat.ID, codersdk.UpdateChatACL{
 		UserRoles: map[string]codersdk.ChatShareEntry{
 			viewer.ID.String(): {Role: codersdk.ChatRoleRead},
@@ -846,11 +819,7 @@ func chatIDSet(chats []codersdk.Chat) map[uuid.UUID]struct{} {
 	return ids
 }
 
-// TestChatSharingDisabled mirrors TestWorkspaceSharingDisabled: when
-// DisableChatSharing is set at startup, viewers with a stored chat ACL
-// entry are denied access. When it is unset the ACL is enforced.
-//
-//nolint:tparallel,paralleltest // Subtests modify a package global (rbac.chatACLDisabled).
+//nolint:tparallel,paralleltest
 func TestChatSharingDisabled(t *testing.T) {
 	t.Run("CanAccessWhenEnabled", func(t *testing.T) {
 		ctx := testutil.Context(t, testutil.WaitLong)
@@ -894,10 +863,7 @@ func TestChatSharingDisabled(t *testing.T) {
 
 		chat := createSharedChat(ctx, t, ownerClient, firstUser.OrganizationID, "chat sharing disabled")
 
-		// Seed the ACL directly as an owner subject: the HTTP UpdateChatACL
-		// endpoint rejects patches when chat sharing is disabled for the
-		// deployment, and the system-restricted subject lacks chat.share.
-		//nolint:gocritic // Owner context is needed to seed ACL in test setup.
+		//nolint:gocritic
 		ownerRoles, err := rbac.RoleIdentifiers{rbac.RoleOwner()}.Expand()
 		require.NoError(t, err)
 		ownerCtx := dbauthz.As(ctx, rbac.Subject{
@@ -919,9 +885,6 @@ func TestChatSharingDisabled(t *testing.T) {
 	})
 }
 
-// TestChatACL_NonOwnerForbidden mirrors TestDeleteWorkspaceACL/SharedUsersCannot:
-// a viewer holding ChatRoleRead may GET the ACL but must not be able to
-// mutate it. Users with no ACL entry at all get 404 on read.
 func TestChatACL_NonOwnerForbidden(t *testing.T) {
 	t.Parallel()
 
@@ -943,14 +906,11 @@ func TestChatACL_NonOwnerForbidden(t *testing.T) {
 		},
 	}))
 
-	// Viewer with ChatRoleRead can read the ACL.
 	acl, err := viewerClient.ChatACL(ctx, chat.ID)
 	require.NoError(t, err, "viewer with ChatRoleRead must be allowed to GET the ACL")
 	require.Len(t, acl.Users, 1)
 	require.Equal(t, viewer.ID, acl.Users[0].ID)
 
-	// Viewer may not PATCH the ACL. Target a third user so the
-	// self-edit guard does not short-circuit first.
 	err = viewerClient.UpdateChatACL(ctx, chat.ID, codersdk.UpdateChatACL{
 		UserRoles: map[string]codersdk.ChatShareEntry{
 			stranger.ID.String(): {Role: codersdk.ChatRoleRead},
@@ -961,14 +921,12 @@ func TestChatACL_NonOwnerForbidden(t *testing.T) {
 	require.ErrorAs(t, err, &patchErr)
 	require.Contains(t, []int{http.StatusForbidden, http.StatusNotFound}, patchErr.StatusCode())
 
-	// Viewer may not DELETE the ACL.
 	err = viewerClient.DeleteChatACL(ctx, chat.ID)
 	require.Error(t, err, "non-owner must not be able to DELETE the ACL")
 	var delErr *codersdk.Error
 	require.ErrorAs(t, err, &delErr)
 	require.Contains(t, []int{http.StatusForbidden, http.StatusNotFound}, delErr.StatusCode())
 
-	// Stranger outside the ACL gets 404 on read.
 	_, err = strangerClient.ChatACL(ctx, chat.ID)
 	require.Error(t, err, "stranger must not see the chat at all")
 	var getErr *codersdk.Error
@@ -976,9 +934,6 @@ func TestChatACL_NonOwnerForbidden(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, getErr.StatusCode())
 }
 
-// TestPatchChatACL_CannotChangeOwnRole mirrors
-// TestUpdateWorkspaceACL/CannotChangeOwnRole: the owner cannot demote
-// themselves via the ACL patch endpoint.
 func TestPatchChatACL_CannotChangeOwnRole(t *testing.T) {
 	t.Parallel()
 
@@ -999,9 +954,6 @@ func TestPatchChatACL_CannotChangeOwnRole(t *testing.T) {
 	require.Contains(t, sdkErr.Message, "cannot change your own chat sharing role")
 }
 
-// TestPatchChatACL_RemovesEntryViaDeletedRole pins the empty-string
-// ChatRoleDeleted sentinel as the removal contract: a PATCH with that
-// role empties the entry on both user and group maps.
 func TestPatchChatACL_RemovesEntryViaDeletedRole(t *testing.T) {
 	t.Parallel()
 

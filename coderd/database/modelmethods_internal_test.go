@@ -182,10 +182,7 @@ func TestWorkspaceACLDisabled(t *testing.T) {
 	})
 }
 
-// TestACLDisabledIsolation asserts the chat and workspace kill switches are
-// independent. Flipping one must not strip ACLs from the other.
-//
-//nolint:tparallel,paralleltest // subtests mutate package-global atomics.
+//nolint:tparallel,paralleltest
 func TestACLDisabledIsolation(t *testing.T) {
 	uid := uuid.NewString()
 	gid := uuid.NewString()

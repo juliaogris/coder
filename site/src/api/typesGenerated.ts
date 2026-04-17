@@ -1783,11 +1783,6 @@ export type ChatMessagePart =
 	| ChatSkillPart;
 
 // From codersdk/chats.go
-/**
- * ChatMessagePartForViewer is the viewer-only superset of ChatMessagePart
- * that admits the "redacted" Type. No write or persistence path references
- * this type, so a redacted marker cannot leak into chat_messages.content.
- */
 export interface ChatMessagePartForViewer {
 	readonly type: ChatMessagePartType;
 	readonly text: string;
@@ -2221,9 +2216,6 @@ export type ChatRole = "" | "read";
 export const ChatRoles: ChatRole[] = ["", "read"];
 
 // From codersdk/chats.go
-/**
- * ChatShareEntry is a PATCH /acl entry. Omitted bools default to false.
- */
 export interface ChatShareEntry {
 	readonly role: ChatRole;
 	readonly share_tool_calls?: boolean;
@@ -8564,11 +8556,6 @@ export interface VariableValue {
 }
 
 // From codersdk/chats.go
-/**
- * ViewerShareFlags are the per-viewer toggles applied by the redaction
- * filter. Owner must be pre-resolved; passing {true, true} disables
- * redaction entirely.
- */
 export interface ViewerShareFlags {
 	readonly ShareToolCalls: boolean;
 	readonly ShareAttachments: boolean;

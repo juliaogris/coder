@@ -631,7 +631,6 @@ func TestChatMessagePartForViewerParity(t *testing.T) {
 			"field %q: typescript tag drift", field.Name)
 	}
 
-	// Sanity: the viewer-only addition must exist.
 	redacted, ok := viewerType.FieldByName("RedactedType")
 	require.True(t, ok, "RedactedType must exist on ChatMessagePartForViewer")
 	require.Equal(t, "redacted_type,omitempty", redacted.Tag.Get("json"))

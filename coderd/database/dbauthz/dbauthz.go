@@ -34,7 +34,6 @@ const wrapname = "dbauthz.querier"
 // ErrNoActor is returned if no actor is present in the context.
 var ErrNoActor = xerrors.Errorf("no authorization actor in context")
 
-// ErrChatACLSubChat is returned when an ACL write targets a sub-chat; ACLs live on root chats only.
 var ErrChatACLSubChat = xerrors.New("chat acl can only be set on root chats")
 
 // NotAuthorizedError is a sentinel error that unwraps to sql.ErrNoRows.

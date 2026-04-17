@@ -116,8 +116,7 @@ type WorkspaceACLEntry struct {
 
 type ChatACL map[string]ChatACLEntry
 
-// ChatACLEntry mirrors WorkspaceACLEntry but carries per-viewer share
-// toggles. Absent bools decode as false — the privacy-first default.
+// ChatACLEntry mirrors WorkspaceACLEntry but carries per-viewer share toggles.
 type ChatACLEntry struct {
 	Permissions      []policy.Action `json:"permissions"`
 	ShareToolCalls   bool            `json:"share_tool_calls,omitempty"`
