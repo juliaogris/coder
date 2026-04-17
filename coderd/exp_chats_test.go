@@ -742,7 +742,7 @@ func TestPostChats_ClientType(t *testing.T) {
 	firstUser := coderdtest.CreateFirstUser(t, client.Client)
 	_ = createChatModelConfig(t, client)
 
-	memberClientRaw, _ := coderdtest.CreateAnotherUser(t, client.Client, firstUser.OrganizationID, rbac.RoleAgentsAccess())
+	memberClientRaw, _ := coderdtest.CreateAnotherUser(t, client.Client, firstUser.OrganizationID, rbac.ScopedRoleAgentsAccess(firstUser.OrganizationID))
 	memberClient := codersdk.NewExperimentalClient(memberClientRaw)
 
 	newChat := func(t *testing.T, clientType codersdk.ChatClientType) codersdk.Chat {
