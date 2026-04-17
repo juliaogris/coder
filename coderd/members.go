@@ -105,6 +105,8 @@ func (api *API) postOrganizationMembers(rw http.ResponseWriter, r *http.Request)
 	var (
 		ctx          = r.Context()
 		organization = httpmw.OrganizationParam(r)
+		apiKey       = httpmw.APIKey(r)
+		auditor      = api.Auditor.Load()
 	)
 
 	var req codersdk.AddOrganizationMembersRequest
@@ -158,6 +160,23 @@ func (api *API) postOrganizationMembers(rw http.ResponseWriter, r *http.Request)
 			Detail:  err.Error(),
 		})
 		return
+	}
+
+	// Emit an audit event for each member added, matching the
+	// single-member endpoint's audit behavior.
+	for i, member := range allMembers {
+		audit.BackgroundAudit(ctx, &audit.BackgroundAuditParams[database.AuditableOrganizationMember]{
+			Audit:          *auditor,
+			Log:            api.Logger,
+			UserID:         apiKey.UserID,
+			OrganizationID: organization.ID,
+			RequestID:      httpmw.RequestID(r),
+			Action:         database.AuditActionCreate,
+			IP:             r.RemoteAddr,
+			Status:         http.StatusOK,
+			Old:            database.AuditableOrganizationMember{},
+			New:            member.Auditable(users[i].Username),
+		})
 	}
 
 	resp, err := convertOrganizationMembers(ctx, api.Database, allMembers)
