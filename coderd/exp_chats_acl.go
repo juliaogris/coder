@@ -236,17 +236,15 @@ func (api *API) deleteChatACL(rw http.ResponseWriter, r *http.Request) {
 }
 
 // effectiveShareFlagsForViewer returns the OR of the viewer's direct
-// user entry and every group entry for groups they belong to. The
-// chat owner always sees everything.
+// user entry and every group entry for groups they belong to. Callers
+// must gate on owner-vs-viewer before invoking this helper; passing
+// the owner here would return empty flags because the owner never has
+// an ACL entry referencing themselves.
 func (api *API) effectiveShareFlagsForViewer(
 	ctx context.Context,
 	chat database.Chat,
 	viewerID uuid.UUID,
 ) (flags codersdk.ViewerShareFlags, err error) {
-	if viewerID == chat.OwnerID {
-		return codersdk.ViewerShareFlags{ShareToolCalls: true, ShareAttachments: true}, nil
-	}
-
 	if entry, ok := chat.UserACL[viewerID.String()]; ok {
 		flags.ShareToolCalls = flags.ShareToolCalls || entry.ShareToolCalls
 		flags.ShareAttachments = flags.ShareAttachments || entry.ShareAttachments
