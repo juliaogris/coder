@@ -918,7 +918,7 @@ func TestListChats(t *testing.T) {
 		require.Equal(t, memberChats[0].ID, memberChats[0].DiffStatus.ChatID)
 	})
 
-	t.Run("OrgMemberWithoutAgentsAccessCanAccessOwnChats", func(t *testing.T) {
+	t.Run("OrgMemberWithoutAgentsAccessCannotAccessOwnChats", func(t *testing.T) {
 		t.Parallel()
 		ctx := testutil.Context(t, testutil.WaitLong)
 		client, db := newChatClientWithDatabase(t)
@@ -926,16 +926,13 @@ func TestListChats(t *testing.T) {
 		modelConfig := createChatModelConfig(t, client)
 
 		// Create a member without agents-access and insert a chat
-		// owned by them via system context. With org-scoped chats,
-		// org members get full CRUD on their own chats through
-		// OrgMemberPermissions, without needing agents-access.
-		// The agents-access role only gates chat creation (postChats)
-		// and message sending (postChatMessages). Metadata operations
-		// like archive/pin/label and reading are not gated.
-		// See: https://github.com/coder/coder/issues/24250
+		// owned by them via system context. Without agents-access,
+		// the member has no ResourceChat permissions at all, so
+		// listing returns 0 chats (SQL auth filter) and getting
+		// a specific chat returns 404 (dbauthz wraps as not found).
 		memberClientRaw, member := coderdtest.CreateAnotherUser(t, client.Client, firstUser.OrganizationID)
 		memberClient := codersdk.NewExperimentalClient(memberClientRaw)
-		_, err := db.InsertChat(dbauthz.AsSystemRestricted(ctx), database.InsertChatParams{
+		chat, err := db.InsertChat(dbauthz.AsSystemRestricted(ctx), database.InsertChatParams{
 			OrganizationID:    firstUser.OrganizationID,
 			Status:            database.ChatStatusWaiting,
 			ClientType:        database.ChatClientTypeUi,
@@ -945,15 +942,18 @@ func TestListChats(t *testing.T) {
 		})
 		require.NoError(t, err)
 
+		// Listing chats returns empty because the SQL auth
+		// filter excludes chats the member cannot read.
 		chats, err := memberClient.ListChats(ctx, nil)
 		require.NoError(t, err)
-		require.Len(t, chats, 1)
+		require.Len(t, chats, 0)
 
-		// Verify member without agents-access can update own chat.
-		err = memberClient.UpdateChat(ctx, chats[0].ID, codersdk.UpdateChatRequest{
+		// Getting a specific chat returns 404 because dbauthz
+		// wraps authorization failures as not-found.
+		err = memberClient.UpdateChat(ctx, chat.ID, codersdk.UpdateChatRequest{
 			Title: ptr.Ref("new title"),
 		})
-		require.NoError(t, err)
+		requireSDKError(t, err, http.StatusNotFound)
 	})
 
 	t.Run("Unauthenticated", func(t *testing.T) {
@@ -4495,10 +4495,10 @@ func TestPostChatMessages(t *testing.T) {
 		modelConfig := createChatModelConfig(t, client)
 
 		// Create a member without agents-access and insert a
-		// chat owned by them via system context. Even though
-		// the member can read the chat through org membership,
-		// sending messages should be gated by agents-access
-		// because it triggers AI/LLM inference.
+		// chat owned by them via system context. Without
+		// agents-access the member has no ResourceChat
+		// permissions, so the ChatParam middleware returns 404
+		// before the handler can check agents-access.
 		memberClientRaw, member := coderdtest.CreateAnotherUser(t, client.Client, firstUser.OrganizationID)
 		memberClient := codersdk.NewExperimentalClient(memberClientRaw)
 		chat, err := db.InsertChat(dbauthz.AsSystemRestricted(ctx), database.InsertChatParams{
@@ -4519,7 +4519,7 @@ func TestPostChatMessages(t *testing.T) {
 				},
 			},
 		})
-		requireSDKError(t, err, http.StatusForbidden)
+		requireSDKError(t, err, http.StatusNotFound)
 	})
 
 	t.Run("EmptyText", func(t *testing.T) {
@@ -6712,9 +6712,10 @@ func TestPromoteChatQueuedMessage(t *testing.T) {
 		firstUser := coderdtest.CreateFirstUser(t, client.Client)
 		modelConfig := createChatModelConfig(t, client)
 
-		// Create a member without agents-access. Even though the
-		// member owns the chat, promoting a queued message should
-		// be gated by agents-access because it triggers inference.
+		// Create a member without agents-access. Without
+		// agents-access the member has no ResourceChat
+		// permissions, so the ChatParam middleware returns 404
+		// before the handler can check agents-access.
 		memberClientRaw, member := coderdtest.CreateAnotherUser(t, client.Client, firstUser.OrganizationID)
 		memberClient := codersdk.NewExperimentalClient(memberClientRaw)
 		chat, err := db.InsertChat(dbauthz.AsSystemRestricted(ctx), database.InsertChatParams{
@@ -6748,7 +6749,7 @@ func TestPromoteChatQueuedMessage(t *testing.T) {
 		)
 		require.NoError(t, err)
 		defer promoteRes.Body.Close()
-		require.Equal(t, http.StatusForbidden, promoteRes.StatusCode)
+		require.Equal(t, http.StatusNotFound, promoteRes.StatusCode)
 	})
 }
 
@@ -9444,9 +9445,10 @@ func TestSubmitToolResults(t *testing.T) {
 		firstUser := coderdtest.CreateFirstUser(t, client.Client)
 		modelConfig := createChatModelConfig(t, client)
 
-		// Create a member without agents-access. Even though the
-		// member owns the chat, submitting tool results should be
-		// gated by agents-access because it triggers inference.
+		// Create a member without agents-access. Without
+		// agents-access the member has no ResourceChat
+		// permissions, so the ChatParam middleware returns 404
+		// before the handler can check agents-access.
 		memberClientRaw, member := coderdtest.CreateAnotherUser(t, client.Client, firstUser.OrganizationID)
 		memberClient := codersdk.NewExperimentalClient(memberClientRaw)
 
@@ -9460,7 +9462,7 @@ func TestSubmitToolResults(t *testing.T) {
 				{ToolCallID: "call_noaccess", Output: json.RawMessage(`"should fail"`)},
 			},
 		})
-		requireSDKError(t, err, http.StatusForbidden)
+		requireSDKError(t, err, http.StatusNotFound)
 	})
 }
 
