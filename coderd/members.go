@@ -18,6 +18,7 @@ import (
 	"github.com/coder/coder/v2/coderd/httpmw"
 	"github.com/coder/coder/v2/coderd/rbac"
 	"github.com/coder/coder/v2/coderd/searchquery"
+	"github.com/coder/coder/v2/coderd/tracing"
 	"github.com/coder/coder/v2/coderd/util/slice"
 	"github.com/coder/coder/v2/codersdk"
 )
@@ -109,10 +110,41 @@ func (api *API) postOrganizationMembers(rw http.ResponseWriter, r *http.Request)
 		auditor      = api.Auditor.Load()
 	)
 
+	sw, ok := rw.(*tracing.StatusWriter)
+	if !ok {
+		httpapi.InternalServerError(rw, xerrors.New("developer error: http.ResponseWriter is not *tracing.StatusWriter"))
+		return
+	}
+
 	var req codersdk.AddOrganizationMembersRequest
 	if !httpapi.Read(ctx, rw, r, &req) {
 		return
 	}
+
+	// auditMembers and auditUsers are populated after the transaction
+	// succeeds and read by the deferred audit closure once the final
+	// response status is known. On early-return error paths the slices
+	// stay nil, so no audit events are emitted — matching the
+	// single-member endpoint where commitAudit skips when both Old
+	// and New have a nil ResourceID.
+	var auditMembers []database.OrganizationMember
+	var auditUsers []database.User
+	defer func() {
+		for i, member := range auditMembers {
+			audit.BackgroundAudit(ctx, &audit.BackgroundAuditParams[database.AuditableOrganizationMember]{
+				Audit:          *auditor,
+				Log:            api.Logger,
+				UserID:         apiKey.UserID,
+				OrganizationID: organization.ID,
+				RequestID:      httpmw.RequestID(r),
+				Action:         database.AuditActionCreate,
+				IP:             r.RemoteAddr,
+				Status:         sw.Status,
+				Old:            database.AuditableOrganizationMember{},
+				New:            member.Auditable(auditUsers[i].Username),
+			})
+		}
+	}()
 
 	// Resolve all users up-front so we can validate before inserting.
 	// Use the request context (not AsSystemRestricted) so that dbauthz
@@ -162,22 +194,10 @@ func (api *API) postOrganizationMembers(rw http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Emit an audit event for each member added, matching the
-	// single-member endpoint's audit behavior.
-	for i, member := range allMembers {
-		audit.BackgroundAudit(ctx, &audit.BackgroundAuditParams[database.AuditableOrganizationMember]{
-			Audit:          *auditor,
-			Log:            api.Logger,
-			UserID:         apiKey.UserID,
-			OrganizationID: organization.ID,
-			RequestID:      httpmw.RequestID(r),
-			Action:         database.AuditActionCreate,
-			IP:             r.RemoteAddr,
-			Status:         http.StatusOK,
-			Old:            database.AuditableOrganizationMember{},
-			New:            member.Auditable(users[i].Username),
-		})
-	}
+	// Populate the audit slices so the deferred closure emits
+	// events with the real response status code.
+	auditMembers = allMembers
+	auditUsers = users
 
 	resp, err := convertOrganizationMembers(ctx, api.Database, allMembers)
 	if err != nil {
