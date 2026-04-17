@@ -20,6 +20,7 @@ import (
 	"golang.org/x/xerrors"
 
 	"github.com/coder/coder/v2/coderd/database"
+	"github.com/coder/coder/v2/coderd/database/dbgen"
 	"github.com/coder/coder/v2/coderd/database/dbtestutil"
 	"github.com/coder/coder/v2/coderd/x/chatd/chatprovider"
 	"github.com/coder/coder/v2/codersdk"
@@ -82,7 +83,7 @@ func createComputerUseParentChild(
 
 	// Insert the parent chat directly via DB to avoid triggering
 	// the server's background processing.
-	parent, err := server.db.InsertChat(ctx, database.InsertChatParams{
+	parent = dbgen.Chat(t, server.db, database.Chat{
 		OrganizationID:    org.ID,
 		OwnerID:           user.ID,
 		WorkspaceID:       uuid.NullUUID{UUID: workspace.ID, Valid: true},
@@ -90,14 +91,12 @@ func createComputerUseParentChild(
 		LastModelConfigID: model.ID,
 		Title:             parentTitle,
 		Status:            database.ChatStatusPending,
-		ClientType:        database.ChatClientTypeUi,
 	})
-	require.NoError(t, err)
 
 	// Insert the child chat directly via DB to avoid triggering
 	// the server's background processing (which would try to run
 	// the chat without an LLM and get stuck).
-	child, err = server.db.InsertChat(ctx, database.InsertChatParams{
+	child = dbgen.Chat(t, server.db, database.Chat{
 		OrganizationID:    org.ID,
 		OwnerID:           user.ID,
 		WorkspaceID:       uuid.NullUUID{UUID: workspace.ID, Valid: true},
@@ -108,9 +107,7 @@ func createComputerUseParentChild(
 		Title:             childTitle,
 		Mode:              database.NullChatMode{ChatMode: database.ChatModeComputerUse, Valid: true},
 		Status:            database.ChatStatusPending,
-		ClientType:        database.ChatClientTypeUi,
 	})
-	require.NoError(t, err)
 
 	return parent, child
 }
@@ -635,7 +632,7 @@ func TestStopAndStoreRecording_OversizedThumbnail(t *testing.T) {
 
 	server := newInternalTestServer(t, db, ps, chatprovider.ProviderAPIKeys{})
 
-	chat, err := db.InsertChat(ctx, database.InsertChatParams{
+	chat := dbgen.Chat(t, db, database.Chat{
 		OrganizationID:    org.ID,
 		OwnerID:           user.ID,
 		WorkspaceID:       uuid.NullUUID{UUID: workspace.ID, Valid: true},
@@ -643,9 +640,7 @@ func TestStopAndStoreRecording_OversizedThumbnail(t *testing.T) {
 		LastModelConfigID: model.ID,
 		Title:             "test-recording",
 		Status:            database.ChatStatusPending,
-		ClientType:        database.ChatClientTypeUi,
 	})
-	require.NoError(t, err)
 
 	videoData := bytes.Repeat([]byte{0xAA}, 1024)
 
@@ -716,7 +711,7 @@ func TestStopAndStoreRecording_DuplicatePartsIgnored(t *testing.T) {
 
 	server := newInternalTestServer(t, db, ps, chatprovider.ProviderAPIKeys{})
 
-	chat, err := db.InsertChat(ctx, database.InsertChatParams{
+	chat := dbgen.Chat(t, db, database.Chat{
 		OrganizationID:    org.ID,
 		OwnerID:           user.ID,
 		WorkspaceID:       uuid.NullUUID{UUID: workspace.ID, Valid: true},
@@ -724,9 +719,7 @@ func TestStopAndStoreRecording_DuplicatePartsIgnored(t *testing.T) {
 		LastModelConfigID: model.ID,
 		Title:             "test-recording",
 		Status:            database.ChatStatusPending,
-		ClientType:        database.ChatClientTypeUi,
 	})
-	require.NoError(t, err)
 
 	firstVideo := bytes.Repeat([]byte{0x01}, 512)
 	secondVideo := bytes.Repeat([]byte{0x02}, 512)
@@ -807,7 +800,7 @@ func TestStopAndStoreRecording_WithThumbnail(t *testing.T) {
 
 	server := newInternalTestServer(t, db, ps, chatprovider.ProviderAPIKeys{})
 
-	chat, err := db.InsertChat(ctx, database.InsertChatParams{
+	chat := dbgen.Chat(t, db, database.Chat{
 		OrganizationID:    org.ID,
 		OwnerID:           user.ID,
 		WorkspaceID:       uuid.NullUUID{UUID: workspace.ID, Valid: true},
@@ -815,9 +808,7 @@ func TestStopAndStoreRecording_WithThumbnail(t *testing.T) {
 		LastModelConfigID: model.ID,
 		Title:             "test-recording",
 		Status:            database.ChatStatusPending,
-		ClientType:        database.ChatClientTypeUi,
 	})
-	require.NoError(t, err)
 
 	videoData := bytes.Repeat([]byte{0xDE, 0xAD}, 512) // 1024 bytes
 	thumbData := bytes.Repeat([]byte{0xFF, 0xD8}, 256) // 512 bytes
@@ -881,7 +872,7 @@ func TestStopAndStoreRecording_CapExceededRollback(t *testing.T) {
 
 	server := newInternalTestServer(t, db, ps, chatprovider.ProviderAPIKeys{})
 
-	chat, err := db.InsertChat(ctx, database.InsertChatParams{
+	chat := dbgen.Chat(t, db, database.Chat{
 		OrganizationID:    org.ID,
 		OwnerID:           user.ID,
 		WorkspaceID:       uuid.NullUUID{UUID: workspace.ID, Valid: true},
@@ -889,9 +880,7 @@ func TestStopAndStoreRecording_CapExceededRollback(t *testing.T) {
 		LastModelConfigID: model.ID,
 		Title:             "test-recording",
 		Status:            database.ChatStatusPending,
-		ClientType:        database.ChatClientTypeUi,
 	})
-	require.NoError(t, err)
 
 	// Pre-fill the chat with MaxChatFileIDs links so any new
 	// recording file will be rejected by LinkChatFiles.
@@ -971,7 +960,7 @@ func TestStopAndStoreRecording_VideoOnly(t *testing.T) {
 
 	server := newInternalTestServer(t, db, ps, chatprovider.ProviderAPIKeys{})
 
-	chat, err := db.InsertChat(ctx, database.InsertChatParams{
+	chat := dbgen.Chat(t, db, database.Chat{
 		OrganizationID:    org.ID,
 		OwnerID:           user.ID,
 		WorkspaceID:       uuid.NullUUID{UUID: workspace.ID, Valid: true},
@@ -979,9 +968,7 @@ func TestStopAndStoreRecording_VideoOnly(t *testing.T) {
 		LastModelConfigID: model.ID,
 		Title:             "test-recording",
 		Status:            database.ChatStatusPending,
-		ClientType:        database.ChatClientTypeUi,
 	})
-	require.NoError(t, err)
 
 	videoData := make([]byte, 1024)
 
@@ -1064,7 +1051,7 @@ func TestStopAndStoreRecording_UnknownPartIgnored(t *testing.T) {
 
 	server := newInternalTestServer(t, db, ps, chatprovider.ProviderAPIKeys{})
 
-	chat, err := db.InsertChat(ctx, database.InsertChatParams{
+	chat := dbgen.Chat(t, db, database.Chat{
 		OrganizationID:    org.ID,
 		OwnerID:           user.ID,
 		WorkspaceID:       uuid.NullUUID{UUID: workspace.ID, Valid: true},
@@ -1072,9 +1059,7 @@ func TestStopAndStoreRecording_UnknownPartIgnored(t *testing.T) {
 		LastModelConfigID: model.ID,
 		Title:             "test-recording",
 		Status:            database.ChatStatusPending,
-		ClientType:        database.ChatClientTypeUi,
 	})
-	require.NoError(t, err)
 
 	videoData := make([]byte, 1024)
 	thumbData := make([]byte, 512)
