@@ -120,6 +120,47 @@ func TestOrgSharingPermissions(t *testing.T) {
 	}
 }
 
+func TestOrgChatSharingPermissions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name              string
+		permsFunc         func(rbac.OrgSettings) rbac.OrgRolePermissions
+		mode              rbac.ShareableChatOwners
+		orgNegateShare    bool
+		memberNegateShare bool
+	}{
+		{"Member/Everyone", rbac.OrgMemberPermissions, rbac.ShareableChatOwnersEveryone, false, false},
+		{"Member/None", rbac.OrgMemberPermissions, rbac.ShareableChatOwnersNone, true, true},
+		{"Member/ServiceAccounts", rbac.OrgMemberPermissions, rbac.ShareableChatOwnersServiceAccounts, false, true},
+		{"ServiceAccount/Everyone", rbac.OrgServiceAccountPermissions, rbac.ShareableChatOwnersEveryone, false, false},
+		{"ServiceAccount/None", rbac.OrgServiceAccountPermissions, rbac.ShareableChatOwnersNone, true, false},
+		{"ServiceAccount/ServiceAccounts", rbac.OrgServiceAccountPermissions, rbac.ShareableChatOwnersServiceAccounts, false, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			perms := tt.permsFunc(rbac.OrgSettings{
+				ShareableChatOwners: tt.mode,
+			})
+
+			assert.Equal(t, tt.orgNegateShare, permissionGranted(perms.Org, rbac.Permission{
+				Negate:       true,
+				ResourceType: rbac.ResourceChat.Type,
+				Action:       policy.ActionShare,
+			}), "org negate chat share")
+
+			assert.Equal(t, tt.memberNegateShare, permissionGranted(perms.Member, rbac.Permission{
+				Negate:       true,
+				ResourceType: rbac.ResourceChat.Type,
+				Action:       policy.ActionShare,
+			}), "member negate chat share")
+		})
+	}
+}
+
 //nolint:tparallel,paralleltest
 func TestOwnerExec(t *testing.T) {
 	owner := rbac.Subject{
