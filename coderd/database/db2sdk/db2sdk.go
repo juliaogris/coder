@@ -773,12 +773,13 @@ func Role(role database.CustomRole) codersdk.Role {
 	}
 
 	return codersdk.Role{
-		Name:                    role.Name,
-		OrganizationID:          orgID,
-		DisplayName:             role.DisplayName,
-		SitePermissions:         slice.List(role.SitePermissions, Permission),
-		UserPermissions:         slice.List(role.UserPermissions, Permission),
-		OrganizationPermissions: slice.List(role.OrgPermissions, Permission),
+		Name:                          role.Name,
+		OrganizationID:                orgID,
+		DisplayName:                   role.DisplayName,
+		SitePermissions:               slice.List(role.SitePermissions, Permission),
+		UserPermissions:               slice.List(role.UserPermissions, Permission),
+		OrganizationPermissions:       slice.List(role.OrgPermissions, Permission),
+		OrganizationMemberPermissions: slice.List(role.MemberPermissions, Permission),
 	}
 }
 

@@ -52,6 +52,7 @@ func TestReconcileSystemRole(t *testing.T) {
 	}{
 		{"OrgMember", rbac.RoleOrgMember(), rbac.OrgMemberPermissions},
 		{"ServiceAccount", rbac.RoleOrgServiceAccount(), rbac.OrgServiceAccountPermissions},
+		{"AgentsAccess", rbac.RoleAgentsAccess(), rbac.AgentsAccessPermissions},
 	}
 
 	for _, tt := range tests {
