@@ -853,3 +853,129 @@ func TestChatSharingDisabled(t *testing.T) {
 		require.NotNil(t, sdkErr)
 	})
 }
+
+// TestChatACL_NonOwnerForbidden mirrors TestDeleteWorkspaceACL/SharedUsersCannot:
+// a viewer holding ChatRoleRead may GET the ACL but must not be able to
+// mutate it. Users with no ACL entry at all get 404 on read.
+func TestChatACL_NonOwnerForbidden(t *testing.T) {
+	t.Parallel()
+
+	ctx := testutil.Context(t, testutil.WaitLong)
+	ownerClient, _ := newChatClientWithDatabase(t)
+	firstUser := coderdtest.CreateFirstUser(t, ownerClient.Client)
+	_ = createChatModelConfig(t, ownerClient)
+
+	viewerRaw, viewer := coderdtest.CreateAnotherUser(t, ownerClient.Client, firstUser.OrganizationID)
+	viewerClient := codersdk.NewExperimentalClient(viewerRaw)
+
+	strangerRaw, stranger := coderdtest.CreateAnotherUser(t, ownerClient.Client, firstUser.OrganizationID)
+	strangerClient := codersdk.NewExperimentalClient(strangerRaw)
+
+	chat := createSharedChat(ctx, t, ownerClient, firstUser.OrganizationID, "non-owner boundary")
+	require.NoError(t, ownerClient.UpdateChatACL(ctx, chat.ID, codersdk.UpdateChatACL{
+		UserRoles: map[string]codersdk.ChatShareEntry{
+			viewer.ID.String(): {Role: codersdk.ChatRoleRead},
+		},
+	}))
+
+	// Viewer with ChatRoleRead can read the ACL.
+	acl, err := viewerClient.ChatACL(ctx, chat.ID)
+	require.NoError(t, err, "viewer with ChatRoleRead must be allowed to GET the ACL")
+	require.Len(t, acl.Users, 1)
+	require.Equal(t, viewer.ID, acl.Users[0].ID)
+
+	// Viewer may not PATCH the ACL. Target a third user so the
+	// self-edit guard does not short-circuit first.
+	err = viewerClient.UpdateChatACL(ctx, chat.ID, codersdk.UpdateChatACL{
+		UserRoles: map[string]codersdk.ChatShareEntry{
+			stranger.ID.String(): {Role: codersdk.ChatRoleRead},
+		},
+	})
+	require.Error(t, err, "non-owner must not be able to PATCH the ACL")
+	var patchErr *codersdk.Error
+	require.ErrorAs(t, err, &patchErr)
+	require.Contains(t, []int{http.StatusForbidden, http.StatusNotFound}, patchErr.StatusCode())
+
+	// Viewer may not DELETE the ACL.
+	err = viewerClient.DeleteChatACL(ctx, chat.ID)
+	require.Error(t, err, "non-owner must not be able to DELETE the ACL")
+	var delErr *codersdk.Error
+	require.ErrorAs(t, err, &delErr)
+	require.Contains(t, []int{http.StatusForbidden, http.StatusNotFound}, delErr.StatusCode())
+
+	// Stranger outside the ACL gets 404 on read.
+	_, err = strangerClient.ChatACL(ctx, chat.ID)
+	require.Error(t, err, "stranger must not see the chat at all")
+	var getErr *codersdk.Error
+	require.ErrorAs(t, err, &getErr)
+	require.Equal(t, http.StatusNotFound, getErr.StatusCode())
+}
+
+// TestPatchChatACL_CannotChangeOwnRole mirrors
+// TestUpdateWorkspaceACL/CannotChangeOwnRole: the owner cannot demote
+// themselves via the ACL patch endpoint.
+func TestPatchChatACL_CannotChangeOwnRole(t *testing.T) {
+	t.Parallel()
+
+	ctx := testutil.Context(t, testutil.WaitLong)
+	ownerClient, _ := newChatClientWithDatabase(t)
+	firstUser := coderdtest.CreateFirstUser(t, ownerClient.Client)
+	_ = createChatModelConfig(t, ownerClient)
+
+	chat := createSharedChat(ctx, t, ownerClient, firstUser.OrganizationID, "cannot change own role")
+
+	err := ownerClient.UpdateChatACL(ctx, chat.ID, codersdk.UpdateChatACL{
+		UserRoles: map[string]codersdk.ChatShareEntry{
+			firstUser.UserID.String(): {Role: codersdk.ChatRoleRead},
+		},
+	})
+	sdkErr := requireSDKError(t, err, http.StatusBadRequest)
+	require.NotNil(t, sdkErr)
+	require.Contains(t, sdkErr.Message, "cannot change your own chat sharing role")
+}
+
+// TestPatchChatACL_RemovesEntryViaDeletedRole pins the empty-string
+// ChatRoleDeleted sentinel as the removal contract: a PATCH with that
+// role empties the entry on both user and group maps.
+func TestPatchChatACL_RemovesEntryViaDeletedRole(t *testing.T) {
+	t.Parallel()
+
+	ctx := testutil.Context(t, testutil.WaitLong)
+	ownerClient, db := newChatClientWithDatabase(t)
+	firstUser := coderdtest.CreateFirstUser(t, ownerClient.Client)
+	_ = createChatModelConfig(t, ownerClient)
+
+	_, viewer := coderdtest.CreateAnotherUser(t, ownerClient.Client, firstUser.OrganizationID)
+	group := dbgen.Group(t, db, database.Group{OrganizationID: firstUser.OrganizationID})
+	dbgen.GroupMember(t, db, database.GroupMemberTable{GroupID: group.ID, UserID: viewer.ID})
+
+	chat := createSharedChat(ctx, t, ownerClient, firstUser.OrganizationID, "remove via deleted role")
+
+	require.NoError(t, ownerClient.UpdateChatACL(ctx, chat.ID, codersdk.UpdateChatACL{
+		UserRoles: map[string]codersdk.ChatShareEntry{
+			viewer.ID.String(): {Role: codersdk.ChatRoleRead},
+		},
+		GroupRoles: map[string]codersdk.ChatShareEntry{
+			group.ID.String(): {Role: codersdk.ChatRoleRead},
+		},
+	}))
+
+	acl, err := ownerClient.ChatACL(ctx, chat.ID)
+	require.NoError(t, err)
+	require.Len(t, acl.Users, 1)
+	require.Len(t, acl.Groups, 1)
+
+	require.NoError(t, ownerClient.UpdateChatACL(ctx, chat.ID, codersdk.UpdateChatACL{
+		UserRoles: map[string]codersdk.ChatShareEntry{
+			viewer.ID.String(): {Role: codersdk.ChatRoleDeleted},
+		},
+		GroupRoles: map[string]codersdk.ChatShareEntry{
+			group.ID.String(): {Role: codersdk.ChatRoleDeleted},
+		},
+	}))
+
+	acl, err = ownerClient.ChatACL(ctx, chat.ID)
+	require.NoError(t, err)
+	require.Empty(t, acl.Users, "ChatRoleDeleted must remove the user entry")
+	require.Empty(t, acl.Groups, "ChatRoleDeleted must remove the group entry")
+}
