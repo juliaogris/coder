@@ -27,7 +27,7 @@ func (api *API) chatACL(rw http.ResponseWriter, r *http.Request) {
 		chat = httpmw.ChatParam(r)
 	)
 
-	if chat.RootChatID.Valid || chat.ParentChatID.Valid {
+	if chat.IsSubChat() {
 		writeChatACLSubChatError(ctx, rw, chat)
 		return
 	}
@@ -122,7 +122,7 @@ func (api *API) patchChatACL(rw http.ResponseWriter, r *http.Request) {
 		chat = httpmw.ChatParam(r)
 	)
 
-	if chat.RootChatID.Valid || chat.ParentChatID.Valid {
+	if chat.IsSubChat() {
 		writeChatACLSubChatError(ctx, rw, chat)
 		return
 	}
@@ -210,7 +210,7 @@ func (api *API) deleteChatACL(rw http.ResponseWriter, r *http.Request) {
 		chat = httpmw.ChatParam(r)
 	)
 
-	if chat.RootChatID.Valid || chat.ParentChatID.Valid {
+	if chat.IsSubChat() {
 		writeChatACLSubChatError(ctx, rw, chat)
 		return
 	}
@@ -276,6 +276,12 @@ func (api *API) effectiveShareFlagsForViewer(
 }
 
 func writeChatACLSubChatError(ctx context.Context, rw http.ResponseWriter, chat database.Chat) {
+	if !chat.IsSubChat() {
+		// Developer error: every caller must guard with chat.IsSubChat()
+		// before invoking this helper. Emitting the canned error on a root
+		// chat would point the client at a nil UUID.
+		panic("developer error: writeChatACLSubChatError called on non-sub-chat")
+	}
 	var rootID uuid.UUID
 	switch {
 	case chat.RootChatID.Valid:

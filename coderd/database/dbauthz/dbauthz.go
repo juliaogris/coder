@@ -1869,7 +1869,7 @@ func (q *querier) DeleteChatACLByID(ctx context.Context, id uuid.UUID) error {
 		if err != nil {
 			return database.Chat{}, err
 		}
-		if chat.RootChatID.Valid || chat.ParentChatID.Valid {
+		if chat.IsSubChat() {
 			return database.Chat{}, ErrChatACLSubChat
 		}
 		return chat, nil
@@ -6004,7 +6004,7 @@ func (q *querier) UpdateChatACLByID(ctx context.Context, arg database.UpdateChat
 		if err != nil {
 			return database.Chat{}, err
 		}
-		if chat.RootChatID.Valid || chat.ParentChatID.Valid {
+		if chat.IsSubChat() {
 			return database.Chat{}, ErrChatACLSubChat
 		}
 		return chat, nil

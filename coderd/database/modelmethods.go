@@ -195,6 +195,20 @@ func (c Chat) RBACObject() rbac.Object {
 	return c.ChatTable().RBACObject()
 }
 
+// IsSubChat reports whether this chat is nested under a root chat
+// rather than standing on its own. Sub-chats carry either a
+// ParentChatID (one level down) or a RootChatID (any depth down), so
+// either being Valid indicates a non-root row.
+func (c Chat) IsSubChat() bool {
+	return c.RootChatID.Valid || c.ParentChatID.Valid
+}
+
+// IsSubChat mirrors Chat.IsSubChat; ChatTable and Chat are structurally
+// identical so callers holding either can test the same invariant.
+func (c ChatTable) IsSubChat() bool {
+	return c.RootChatID.Valid || c.ParentChatID.Valid
+}
+
 func (c ChatTable) RBACObject() rbac.Object {
 	obj := rbac.ResourceChat.
 		WithID(c.ID).

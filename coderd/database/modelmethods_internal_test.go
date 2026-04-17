@@ -279,3 +279,28 @@ func requireAllowAll(t *testing.T, s rbac.Scope) {
 	require.Equal(t, policy.WildcardSymbol, s.AllowIDList[0].ID)
 	require.Equal(t, policy.WildcardSymbol, s.AllowIDList[0].Type)
 }
+
+func TestChatIsSubChat(t *testing.T) {
+	t.Parallel()
+
+	rootID := uuid.NullUUID{UUID: uuid.New(), Valid: true}
+
+	cases := []struct {
+		name  string
+		chat  Chat
+		isSub bool
+	}{
+		{name: "RootNeither", chat: Chat{}, isSub: false},
+		{name: "RootIDSet", chat: Chat{RootChatID: rootID}, isSub: true},
+		{name: "ParentIDSet", chat: Chat{ParentChatID: rootID}, isSub: true},
+		{name: "Both", chat: Chat{RootChatID: rootID, ParentChatID: rootID}, isSub: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.isSub, tc.chat.IsSubChat(), "Chat.IsSubChat")
+			require.Equal(t, tc.isSub, ChatTable(tc.chat).IsSubChat(), "ChatTable.IsSubChat")
+		})
+	}
+}
