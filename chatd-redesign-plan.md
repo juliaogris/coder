@@ -22,7 +22,7 @@ strokes, it does that by:
 - making chat ownership and lease management explicit in the durable model,
 - using runtime components that re-derive needed work from the latest durable
   state rather than from ad hoc in-memory control flow,
-- fencing stale callbacks with `worker_id` and `run_epoch`, and
+- fencing stale callbacks with `worker_id` and `history_epoch`, and
 - separating durable chat semantics, local runtime control, and client stream
   assembly into distinct machines.
 
@@ -48,7 +48,7 @@ Replica runtime
 ├─ Heartbeat loop
 └─ Runner registry
       └─ ChatRunner (one per owned chat)
-            └─ GenerationSession (at most one active per run_epoch)
+            └─ GenerationSession (at most one active per chat)
 ```
 
 ## Document map
@@ -106,11 +106,18 @@ structures are mutated and how runtime components derive work from them.
 Critical durable fields include:
 
 - `status`,
-- `run_epoch`,
+- `history_epoch`,
 - `snapshot_version`,
 - `pending_action`,
-- `worker_id`, and
-- `heartbeat_at`.
+- `worker_id`,
+- `heartbeat_at`, and
+- `chat_messages.compressed` plus the usage metadata carried on assistant
+  messages (`input_tokens`, `cache_read_tokens`, `cache_creation_tokens`, and
+  `context_limit`).
+
+The redesign treats chat compaction as ordinary `chat_messages` rows that alter
+future prompt reconstruction through projection rules. Compaction is not a
+separate durable execution status.
 
 `snapshot_version` answers:
 
@@ -120,14 +127,23 @@ Each successful `ApplyTransitions(...)` call advances `snapshot_version` once.
 That single version advance is the committed watermark for the whole applied
 transition bundle.
 
+`history_epoch` answers:
+
+> which committed prompt-history state was this session based on?
+
+Every successful transition that mutates committed message history increments
+`history_epoch`. Queue-only, ownership-only, and status-only transitions do not.
+
 `worker_id` and `heartbeat_at` form a per-chat owner lease.
 
 Rules:
 
 - `worker_id` identifies the replica that currently owns the chat.
 - Ownership is orthogonal to execution status. A chat may be owned while
-  `status` is `pending`, `waiting`, `error`, `requires_action`, `running`, or
+  `status` is `waiting`, `error`, `requires_action`, `running`, or
   `interrupting`.
+- `running` does not guarantee a currently live effect. It means the durable
+  snapshot says generation should be active when an owner reconciles the chat.
 - `heartbeat_at` tracks liveness of the owner process, not of an individual LLM
   goroutine.
 - Heartbeats do not advance `snapshot_version`.
@@ -163,7 +179,6 @@ Allowed bundle examples:
 Disallowed bundle examples:
 
 - `Interrupt` + `RunInterrupted`
-- `StartRun` + any later effect callback transition
 
 Those intermediate states are intentionally durable and must remain visible for
 recovery and later reconciliation.
@@ -173,9 +188,9 @@ recovery and later reconciliation.
 #### External transitions
 
 - `Create(initialUser)` creates a new chat with its initial user turn and lands
-  in `pending`.
+  in `running`.
 - `DirectSend(m)` appends a user message directly to an idle chat and lands in
-  `pending`.
+  `running`.
 - `Enqueue(m)` appends a user message to the durable queue without changing the
   active history.
 - `ReorderQueue(qid, new_pos)` moves a queued user message to a new durable
@@ -184,14 +199,12 @@ recovery and later reconciliation.
 - `DeleteQueued(qid)` removes one queued message without changing the active
   history.
 - `Edit(k, replacement)` truncates active history at a user turn, inserts the
-  replacement turn, clears queue and pending calls, and lands in `pending`.
+  replacement turn, clears queue and pending calls, and lands in `running`.
 - `SubmitToolResults(results)` appends matching tool results, clears pending
-  calls, and lands in `pending`.
+  calls, and lands in `running`.
 - `Interrupt` has status-dependent effects:
   - from `running`, it requests cancellation of the current effect and lands in
     `interrupting`
-  - from `pending`, it cancels runnable-but-not-started work and lands in
-    `waiting`
   - from `requires_action`, it closes pending calls with synthetic error tool
     results and lands in `waiting`
   - from `interrupting`, it is idempotent and has no further durable effect
@@ -202,11 +215,11 @@ recovery and later reconciliation.
 
 - `Acquire(worker_id)` changes `worker_id` to the designated worker.
 - `Abandon(origin_worker_id)` clears `worker_id`.
-- `StartRun` increments `run_epoch`, marks the chat `running`, and leaves the
-  snapshot in a state that the designated owner will reconcile into a local
-  `GenerationSession`.
-- `CommitStep(step)` appends one durable assistant/tool suffix while remaining
-  `running`.
+- `CommitStep(step)` appends one durable message suffix while remaining
+  `running`. A committed step may append ordinary assistant/tool messages, and a
+  compaction step may append a compressed summary boundary plus visible
+  compaction tool-call and tool-result messages. `CommitStep(...)` requires a
+  matching `history_epoch` and increments `history_epoch` on success.
 - `EnterRequiresAction(calls)` records pending dynamic tool calls and lands in
   `requires_action`.
 - `RunInterrupted(optionalPartialStep)` appends one final interrupted
@@ -214,7 +227,7 @@ recovery and later reconciliation.
   if none is available, clears the interrupting state, and lands in `waiting`.
 - `FinishWaiting` completes a run with no backlog and lands in `waiting`.
 - `PromoteQueueHead` removes the queue head, appends it to history as a user
-  turn, and lands in `pending`. When the system appends this transition
+  turn, and lands in `running`. When the system appends this transition
   automatically after a completed or interrupted run, the caller must enforce
   `archived = false`.
 - `FinishError(err)` ends a running chat in `error`.
@@ -236,19 +249,18 @@ that same machine for readability:
 | Code | Meaning |
 |---|---|
 | `N` | chat does not exist |
-| `W0` | `status=waiting`, `Q=[]` |
-| `W1` | `status=waiting`, `Q≠[]` |
+| `W` | `status=waiting`, `Q=[]` |
 | `E0` | `status=error`, `Q=[]` |
 | `E1` | `status=error`, `Q≠[]` |
-| `P0` | `status=pending`, `Q=[]` |
-| `P1` | `status=pending`, `Q≠[]` |
 | `R0` | `status=running`, `Q=[]` |
 | `R1` | `status=running`, `Q≠[]` |
 | `I0` | `status=interrupting`, `Q=[]` |
 | `I1` | `status=interrupting`, `Q≠[]` |
 | `A0` | `status=requires_action`, `Q=[]`, `pendingCalls≠{}` |
 | `A1` | `status=requires_action`, `Q≠[]`, `pendingCalls≠{}` |
-| `X` | archived idle chat (`archived=true`) |
+| `XW` | archived idle chat (`archived=true`, `Q=[]`) |
+| `XE0` | archived error chat (`archived=true`, `Q=[]`) |
+| `XE1` | archived error chat (`archived=true`, `Q≠[]`) |
 
 ```mermaid
 stateDiagram-v2
@@ -256,53 +268,32 @@ stateDiagram-v2
 
     [*] --> N
 
-    N --> P0: Create
+    N --> R0: Create
 
-    W0 --> P0: DirectSend
-    W0 --> P0: Edit
-    W0 --> X: Archive
+    W --> R0: DirectSend
+    W --> R0: Edit
+    W --> XW: Archive
 
-    W1 --> W1: Enqueue
-    W1 --> W1: ReorderQueue
-    W1 --> W0: DeleteQueued / removed last queued
-    W1 --> W1: DeleteQueued / queue still non-empty
-    W1 --> P0: PromoteQueueHead / promoted last queued
-    W1 --> P1: PromoteQueueHead / queue still non-empty
-    W1 --> P0: Edit
-
-    E0 --> P0: DirectSend
-    E0 --> P0: Edit
-    E0 --> X: Archive
+    E0 --> R0: DirectSend
+    E0 --> R0: Edit
+    E0 --> XE0: Archive
 
     E1 --> E1: Enqueue
     E1 --> E1: ReorderQueue
     E1 --> E0: DeleteQueued / removed last queued
     E1 --> E1: DeleteQueued / queue still non-empty
-    E1 --> P0: PromoteQueueHead / promoted last queued
-    E1 --> P1: PromoteQueueHead / queue still non-empty
-    E1 --> P0: Edit
-    E1 --> X: Archive
-
-    P0 --> R0: StartRun
-    P0 --> W0: Interrupt
-    P0 --> P1: Enqueue
-    P0 --> P0: Edit
-
-    P1 --> R1: StartRun
-    P1 --> W1: Interrupt
-    P1 --> P1: Enqueue
-    P1 --> P1: ReorderQueue
-    P1 --> P0: DeleteQueued / removed last queued
-    P1 --> P1: DeleteQueued / queue still non-empty
-    P1 --> P0: Edit
+    E1 --> R0: PromoteQueueHead / promoted last queued
+    E1 --> R1: PromoteQueueHead / queue still non-empty
+    E1 --> R0: Edit
+    E1 --> XE1: Archive
 
     R0 --> R0: CommitStep
     R0 --> A0: EnterRequiresAction
     R0 --> I0: Interrupt
-    R0 --> W0: FinishWaiting
+    R0 --> W: FinishWaiting
     R0 --> E0: FinishError
     R0 --> R1: Enqueue
-    R0 --> P0: Edit
+    R0 --> R0: Edit
 
     R1 --> R1: CommitStep
     R1 --> A1: EnterRequiresAction
@@ -312,37 +303,39 @@ stateDiagram-v2
     R1 --> R1: ReorderQueue
     R1 --> R0: DeleteQueued / removed last queued
     R1 --> R1: DeleteQueued / queue still non-empty
-    R1 --> P0: Edit
+    R1 --> R0: Edit
 
     I0 --> I1: Enqueue
-    I0 --> W0: RunInterrupted
-    I0 --> P0: Edit
+    I0 --> W: RunInterrupted
+    I0 --> R0: Edit
 
     I1 --> I1: Enqueue
     I1 --> I1: ReorderQueue
     I1 --> I0: DeleteQueued / removed last queued
     I1 --> I1: DeleteQueued / queue still non-empty
-    I1 --> W1: RunInterrupted
-    I1 --> P0: Edit
+    I1 --> R0: RunInterrupted / promoted last queued
+    I1 --> R1: RunInterrupted / queue still non-empty after promoting head
+    I1 --> R0: Edit
 
-    A0 --> P0: SubmitToolResults
-    A0 --> W0: Interrupt
+    A0 --> R0: SubmitToolResults
+    A0 --> W: Interrupt
     A0 --> E0: RecoverStaleRequiresAction
     A0 --> A1: Enqueue
-    A0 --> P0: Edit
+    A0 --> R0: Edit
 
-    A1 --> P1: SubmitToolResults
-    A1 --> W1: Interrupt
+    A1 --> R1: SubmitToolResults
+    A1 --> R0: Interrupt / closed pending calls and promoted last queued
+    A1 --> R1: Interrupt / closed pending calls and promoted head, queue still non-empty
     A1 --> E1: RecoverStaleRequiresAction
     A1 --> A1: Enqueue
     A1 --> A1: ReorderQueue
     A1 --> A0: DeleteQueued / removed last queued
     A1 --> A1: DeleteQueued / queue still non-empty
-    A1 --> P0: Edit
+    A1 --> R0: Edit
 
-    X --> W0: Unarchive
-    X --> E0: Unarchive
-    X --> E1: Unarchive
+    XW --> W: Unarchive
+    XE0 --> E0: Unarchive
+    XE1 --> E1: Unarchive
 ```
 
 ### 1.6 Ownership projection
@@ -375,9 +368,9 @@ Rules:
   update does not advance `snapshot_version` and is not shown as a separate node
   in the ownership projection.
 - The execution-state and ownership projections are combined by the same
-  `ApplyTransitions(...)` calls. For example, `StartRun` changes only the
-  execution-state projection, while `Acquire(...)` changes only the ownership
-  projection.
+  `ApplyTransitions(...)` calls. For example, `CommitStep(...)` changes only the
+  execution-state/history projection, while `Acquire(...)` changes only the
+  ownership projection.
 
 ### 1.7 Notification contract
 
@@ -393,7 +386,7 @@ There are 2 notification channels:
 - `chat:update:{chat_id}` is a per-chat channel. Its payload is:
   - `snapshot_version`
   - `worker_id`
-  - `run_epoch`
+  - `history_epoch`
   - `status`
 
 Emission rules:
@@ -425,7 +418,7 @@ It compiles atomically into lower-level transitions based on current state:
 
 - if `status ∈ {waiting, error}`: append `ReorderQueue(qid, 0)` and
   `PromoteQueueHead`
-- if `status ∈ {pending, interrupting}`: append only `ReorderQueue(qid, 0)`
+- if `status = interrupting`: append only `ReorderQueue(qid, 0)`
 - if `status ∈ {running, requires_action}`: append `ReorderQueue(qid, 0)` and
   `Interrupt`
 
@@ -458,7 +451,14 @@ The refined graph in this document keeps:
 
 - `FinishWaiting` for `running -> waiting` when `Q=[]`,
 - `RunInterrupted` for `interrupting -> waiting`, and
-- `PromoteQueueHead` for `waiting|error -> pending` when `Q≠[]`.
+- `PromoteQueueHead` for `waiting|error -> running` when `Q≠[]`.
+- `waiting` with queued backlog is not a stable durable state. If interruption
+  completion would otherwise land in `waiting` while backlog exists, queue-head
+  promotion must happen before the chat settles, producing `running` instead.
+- `error` may durably retain queued backlog. From `error`, callers may either
+  use `DirectSend(m)` to append directly to history and resume in `running`, or
+  use `PromoteQueued(qid)` / `PromoteQueueHead` to move a queued message into
+  history and resume in `running`.
 
 That means there is no direct `FinishWaiting -> PromoteQueueHead` or
 `RunInterrupted -> PromoteQueueHead` edge in the refined
@@ -520,7 +520,7 @@ Current behavior:
 
 Redesign mapping:
 
-- idle send: `DirectSend(m)` then later `StartRun` if processing should begin,
+- idle send: `DirectSend(m)`,
 - busy queue: `Enqueue(m)`,
 - busy interrupt: `Enqueue(m)` + `Interrupt`.
 
@@ -619,7 +619,6 @@ Current behavior:
 Redesign mapping:
 
 - `SubmitToolResults(results)`
-- then later `StartRun` if processing should resume immediately.
 
 Expected API change:
 
@@ -703,7 +702,6 @@ The registry-centered multi-chat runtime behaves as follows:
   notifications. It still queries durable state to determine which chats should
   be acquired.
 - Acquisition candidates include at least:
-  - `status = pending`,
   - `status = running`,
   - `status = interrupting`,
   - `status ∈ {waiting, error}` with backlog and queue-head promotion allowed,
@@ -711,8 +709,7 @@ The registry-centered multi-chat runtime behaves as follows:
 - For each candidate chat, the acquisition loop may call:
   - `ApplyTransitions(chat_id, Acquire(worker_id = my_replica_id))`
 - `Acquire(worker_id)` is what recovers stale ownership. A stale `running` chat
-  is recovered by stale-owner takeover via `Acquire(...)`, not by resetting
-  status to `pending` first.
+  is recovered by stale-owner takeover via `Acquire(...)`.
 - The heartbeat loop renews `heartbeat_at` for chats the registry currently
   believes are owned by this replica.
 - During graceful shutdown or other explicit runtime release, the registry may
@@ -749,13 +746,13 @@ A `ChatRunner` consumes:
 On creation, the runner subscribes to `chat:update:{chat_id}` before reading
 its initial durable snapshot.
 
-### 2.8 Observed durable summary
+### 2.8 Observed durable control summary
 
 The `ChatRunner` reconciles against a versioned durable summary carrying:
 
 - `snapshot_version`,
 - `worker_id`,
-- `run_epoch`, and
+- `history_epoch`, and
 - `status`.
 
 Rules:
@@ -772,12 +769,12 @@ The local control states are:
 
 - `Idle`: the runner owns the chat locally and has no active
   `GenerationSession`.
-- `Active(run_epoch)`: exactly one local `GenerationSession` exists for the
-  specified `run_epoch`.
-- `Cancelling(run_epoch)`: the latest durable summary says `status =
-  interrupting` for that `run_epoch`, and the runner is reconciling that
-  interrupting state. A local `GenerationSession` for that `run_epoch` may
-  still be stopping, or it may already be gone.
+- `Active(base_history_epoch)`: exactly one local `GenerationSession` exists for
+  the specified history basis.
+- `Cancelling(base_history_epoch)`: the latest durable summary says `status =
+  interrupting`, and the runner is reconciling that interrupting state. A local
+  `GenerationSession` for that history basis may still be stopping, or it may
+  already be gone.
 - `Suspended`: the runner has observed a newer summary with `worker_id != me`,
   has stopped local work, and is awaiting registry closure.
 
@@ -791,11 +788,9 @@ stateDiagram-v2
 
     Idle --> Active: newer summary says worker_id = me and status = running
     Idle --> Cancelling: newer summary says worker_id = me and status = interrupting
-    Active --> Cancelling: newer summary says worker_id = me and status = interrupting for same run_epoch
-    Active --> Idle: local session callback + apply leaves no active session
-    Active --> Idle: newer summary supersedes local run_epoch
-    Cancelling --> Idle: successful RunInterrupted(...)
-    Cancelling --> Idle: newer summary supersedes local run_epoch
+    Active --> Cancelling: newer summary says worker_id = me and status = interrupting
+    Active --> Idle: local session callback + apply leaves no active session / newer summary supersedes local history basis
+    Cancelling --> Idle: successful RunInterrupted(...) / newer summary supersedes local history basis
     Cancelling --> Cancelling: RunInterrupted(...) apply failed transiently
 
     Idle --> Suspended: newer summary says worker_id != me
@@ -810,28 +805,60 @@ stateDiagram-v2
 - Any state moves to `Suspended` when a newer summary says `worker_id != me`.
   The runner cancels any local session immediately and stops issuing new
   applies.
-- `Idle -> Active(run_epoch)` when the latest known summary says
-  `worker_id = me` and `status = running` for a `run_epoch` that has no local
-  session. The runner fetches the durable snapshot first if omitted fields are
-  needed before launch.
-- `Idle -> Cancelling(run_epoch)` when the latest known summary says
-  `worker_id = me` and `status = interrupting`. If a local session for that
-  `run_epoch` still exists, the runner cancels it immediately. If no local
-  session exists, the runner may drive `RunInterrupted(...)` directly.
-- `Active(run_epoch) -> Cancelling(run_epoch)` when the latest known summary
-  says `worker_id = me`, `status = interrupting`, and the local session matches
-  that `run_epoch`.
-- `Cancelling(run_epoch) -> Idle` after a successful `RunInterrupted(...)`
-  apply.
-- `Idle` may still emit internal transition applies such as `StartRun`,
-  `PromoteQueueHead`, or `RecoverStaleRequiresAction`, but those decisions fetch
+- `Idle -> Active(base_history_epoch)` when the latest known summary says
+  `worker_id = me` and `status = running`, and no local session exists. The
+  runner fetches the durable snapshot first if omitted fields are needed before
+  launch, including projected prompt reconstruction and compaction-session
+  selection.
+- `Idle -> Cancelling(base_history_epoch)` when the latest known summary says
+  `worker_id = me` and `status = interrupting`. If a local session still exists,
+  the runner cancels it immediately. If no local session exists, the runner may
+  drive `RunInterrupted(...)` directly.
+- `Active(base_history_epoch) -> Cancelling(base_history_epoch)` when the latest
+  known summary says `worker_id = me` and `status = interrupting`.
+- `Cancelling(base_history_epoch) -> Idle` after a successful
+  `RunInterrupted(...)` apply.
+- `Idle` may still emit internal transition applies such as
+  `PromoteQueueHead` or `RecoverStaleRequiresAction`, but those decisions fetch
   the durable snapshot first when the summary alone is insufficient.
 
-### 2.12 Stale epoch handling
+### 2.12 Projected prompt and compaction eligibility
 
-If the runner has local state for one `run_epoch` and a newer durable summary
-for the same owner arrives with a different `run_epoch`, the local state is
-stale.
+When the `ChatRunner` needs to launch a `GenerationSession`, it builds the next
+model prompt from projected durable history rather than from raw
+`chat_messages` append order.
+
+Rules:
+
+- Chat compaction is represented by ordinary durable messages with
+  `compressed = true`.
+- The latest compressed, model-visible summary message defines the current
+  compaction boundary.
+- The projected prompt includes:
+  - all non-compressed system messages,
+  - the latest compressed summary boundary message, and
+  - all later non-compressed model-visible messages.
+- Earlier non-system messages before that boundary do not contribute to future
+  model prompts.
+- Visible compaction UI messages may remain in transcript history, but they do
+  not define the compaction boundary.
+- The summary boundary message is projected to the model as a `user` message.
+  This preserves a non-system continuation point after compaction.
+- The latest projected assistant usage observation is the newest assistant
+  message in the projected prompt that carries persisted usage metadata.
+- Every launched `GenerationSession` is bound to the current projected prompt at
+  durable `history_epoch = N`. That `history_epoch` becomes part of the session's
+  callback fencing basis.
+- When the runner needs to create a session for a `running` chat, it compares
+  that latest projected assistant usage observation against the effective
+  compaction threshold and chooses between a normal generation session and a
+  compaction session.
+
+### 2.13 Stale epoch handling
+
+If the runner has a local session based on one `history_epoch` and a newer
+ durable summary for the same owner arrives with a different `history_epoch`,
+ the local state is stale.
 
 Rules:
 
@@ -843,62 +870,94 @@ If `RunInterrupted(...)` fails because its preconditions no longer hold, the
 runner treats its local view as stale, refreshes the latest summary, and
 reconciles again instead of retrying the stale apply indefinitely.
 
-### 2.13 GenerationSession interaction
+### 2.14 GenerationSession interaction
 
 `GenerationSession` is the component that performs one run attempt.
 
 Rules:
 
-- `StartRun` is a pure durable transition: it increments `run_epoch`, sets
-  `status = running`, and leaves the snapshot in a state that says generation
-  should be active.
-- `Interrupt` against a running chat is also a pure durable transition: it sets
+- There is no separate durable `StartRun` transition and no `pending` status.
+  Transitions that admit runnable work place the chat directly into `running`.
+- `running` means generation should be active whenever an owner reconciles the
+  chat. It does not imply a currently live effect.
+- `Interrupt` against a running chat is a pure durable transition: it sets
   `status = interrupting` and leaves the snapshot in a state that says the
   current `GenerationSession` should be canceled rather than relaunched.
 - If the latest known summary says `worker_id = me` and `status = running`, the
   local `ChatRunner` ensures exactly one `GenerationSession` exists for that
-  chat and `run_epoch`.
+  chat.
+- `GenerationSession` is a dumb effect executor for one model call against the
+  current projected prompt. It never decides whether more work should run next,
+  and it never decides whether the next session should be a normal generation
+  session or a compaction session.
+- The `ChatRunner` is the only component that decides whether to launch another
+  `GenerationSession`, and what kind of session to launch.
+- When the runner needs to create a session for a `running` chat, it chooses
+  between a normal generation session and a compaction session by inspecting the
+  latest projected assistant usage observation against the effective compaction
+  threshold.
+- A compaction session persists ordinary durable messages through
+  `CommitStep(...)`. It does not introduce a separate durable status, and it
+  does not change `worker_id` or ownership semantics.
+- After the `ChatRunner` applies a `CommitStep(...)` callback from the current
+  session, it reevaluates the projected prompt for the resulting
+  `history_epoch` before deciding what session, if any, to launch next.
 - If the latest known summary says `worker_id = me` and `status = interrupting`,
   the local `ChatRunner` must not launch a fresh `GenerationSession`. If it
-  still has the local `GenerationSession` for the current `run_epoch`, it
-  cancels that session immediately. If it does not, it may call
-  `ApplyTransitions(chat_id, RunInterrupted(nil))` directly.
+  still has the local `GenerationSession`, it cancels that session immediately.
+  If it does not, it may call `ApplyTransitions(chat_id, RunInterrupted(nil))`
+  directly.
 - Same-process `GenerationSession` restarts are handled entirely in memory by
-  the local `ChatRunner`. They do not change `run_epoch`, `worker_id`, or other
-  durable state, and they do not hand ownership to another replica.
+  the local `ChatRunner`. They do not change `worker_id` or other durable
+  state, and they do not hand ownership to another replica.
 - `GenerationSession`s never mutate durable chat state directly. They report
   back to the local `ChatRunner`.
+- For one chat, the local `ChatRunner` must never have more than one in-flight
+  `GenerationSession`. Without `run_epoch`, stale-session protection relies on
+  this single-session invariant plus `history_epoch` fencing.
 
-### 2.14 Callback apply rules
+### 2.15 Callback apply rules
 
 Effect callback transitions are applied through `ApplyTransitions(...)`.
 
 Rules:
 
-- every effect callback transition must carry `origin_worker_id` and
-  `run_epoch`,
+- every effect callback transition must carry `origin_worker_id` and the
+  expected `history_epoch`,
 - apply verifies `origin_worker_id == chats.worker_id` and
-  `run_epoch == chats.run_epoch`,
+  `history_epoch == chats.history_epoch`,
 - `CommitStep`, `EnterRequiresAction`, and `FinishError` require
   `status = running`,
+- compaction-step callbacks use the same `CommitStep(...)` fencing and do not
+  bypass `origin_worker_id` / `history_epoch` checks,
+- every successful history-changing apply increments `history_epoch`,
+- status-only and pending-action-only applies do not increment `history_epoch`,
 - `RunInterrupted` requires `status = interrupting`, and
 - mismatches must no-op or reject without mutating durable state.
 
 The `ChatRunner` calls `ApplyTransitions(...)` for the next internal transition
 only if the local `GenerationSession` that produced the callback is still
-current.
+current. When one callback from a session succeeds with a history-changing
+apply, the runner updates the expected `history_epoch` before issuing the next
+apply from that same session.
 
-### 2.15 Failure and retry behavior
+### 2.16 Failure and retry behavior
 
 Failure handling is explicitly snapshot-driven.
 
 Rules:
 
 - If `RunInterrupted(...)` fails transiently, the runner stays in
-  `Cancelling(run_epoch)`, applies backoff, and retries reconciliation.
+  `Cancelling(base_history_epoch)`, applies backoff, and retries
+  reconciliation.
 - If `RunInterrupted(...)` fails because its preconditions no longer hold, the
   runner treats its local view as stale and reconciles again from the newest
   durable summary.
+- Compaction is best-effort. A compaction-session failure may be surfaced in
+  transcript, metrics, or logging, but it does not by itself require the chat
+  to leave `running` or enter `error`.
+- After a compaction-session failure, the runner may retry compaction with
+  backoff or continue with a normal generation session, depending on policy.
 - If the `chat:ownership` subscription reports errors, the registry schedules
   ownership sweeps using exponential backoff with jitter and coalesces repeated
   failures so a broken pubsub connection cannot cause a hot loop.
@@ -921,3 +980,10 @@ to another replica directly to get the in-flight streaming parts.
 This plan intentionally leaves the stream state machine at a high level for now.
 A later revision will specify its states, attach rules, resync behavior, and
 client-visible guarantees in detail.
+
+Compaction-specific stream rules:
+
+- Compaction produces ordinary visible chat message updates for its assistant
+  tool-call and tool-result messages.
+- The compressed summary boundary itself is model-visible only and primarily
+  affects future prompt reconstruction rather than the user-visible transcript.
