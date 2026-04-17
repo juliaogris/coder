@@ -1467,10 +1467,13 @@ func (api *API) getChat(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if flags.ShareAttachments && len(chatFiles) == 0 {
-		// nolint:gocritic // Chat-level ACL authorizes the viewer; per-file RBAC still checks file ownership.
-		if rows, err := api.Database.GetChatFileMetadataByChatID(dbauthz.AsSystemRestricted(ctx), chat.ID); err == nil {
-			chatFiles = rows
-		}
+		// The viewer has ShareAttachments granted but the RBAC-filtered
+		// fetch returned empty because the chat owner owns the files and
+		// the viewer lacks file:read on the owner's files. Re-fetch as
+		// the system so the viewer sees the attachments the chat ACL
+		// already authorized.
+		//nolint:gocritic // Chat-level ACL authorizes the viewer; per-file RBAC still checks file ownership on the owner's path.
+		chatFiles = api.fetchChatFileMetadata(dbauthz.AsSystemRestricted(ctx), chat.ID)
 	}
 	httpapi.Write(ctx, rw, http.StatusOK, db2sdk.ChatForViewer(chat, diffStatus, chatFiles, flags))
 }

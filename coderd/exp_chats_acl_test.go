@@ -82,21 +82,48 @@ func TestPatchChatACL_AddsUserAndGroup(t *testing.T) {
 func TestPatchChatACL_RejectsNonReadRole(t *testing.T) {
 	t.Parallel()
 
-	ctx := testutil.Context(t, testutil.WaitLong)
+	// Keep the reject cases and one happy-path so the test pins both
+	// directions: anything that is not exactly "read" (canonical) or
+	// "" (ChatRoleDeleted) must be refused. "deleted" is the spelled-
+	// out word, not the empty sentinel, so it must also fail.
+	cases := []struct {
+		name   string
+		role   codersdk.ChatRole
+		reject bool
+	}{
+		{name: "admin", role: codersdk.ChatRole("admin"), reject: true},
+		{name: "UppercaseREAD", role: codersdk.ChatRole("READ"), reject: true},
+		{name: "write", role: codersdk.ChatRole("write"), reject: true},
+		{name: "PaddedRead", role: codersdk.ChatRole(" read "), reject: true},
+		{name: "SpelledDeleted", role: codersdk.ChatRole("deleted"), reject: true},
+		{name: "owner", role: codersdk.ChatRole("owner"), reject: true},
+		{name: "read", role: codersdk.ChatRoleRead, reject: false},
+	}
+
 	ownerClient := newChatClient(t)
 	firstUser := coderdtest.CreateFirstUser(t, ownerClient.Client)
 	_ = createChatModelConfig(t, ownerClient)
 
 	_, viewer := coderdtest.CreateAnotherUser(t, ownerClient.Client, firstUser.OrganizationID)
 
-	chat := createSharedChat(ctx, t, ownerClient, firstUser.OrganizationID, "acl patch bad role")
-
-	err := ownerClient.UpdateChatACL(ctx, chat.ID, codersdk.UpdateChatACL{
-		UserRoles: map[string]codersdk.ChatShareEntry{
-			viewer.ID.String(): {Role: codersdk.ChatRole("admin")},
-		},
-	})
-	requireSDKError(t, err, http.StatusBadRequest)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := testutil.Context(t, testutil.WaitLong)
+			chat := createSharedChat(ctx, t, ownerClient, firstUser.OrganizationID,
+				"acl patch role case: "+tc.name)
+			err := ownerClient.UpdateChatACL(ctx, chat.ID, codersdk.UpdateChatACL{
+				UserRoles: map[string]codersdk.ChatShareEntry{
+					viewer.ID.String(): {Role: tc.role},
+				},
+			})
+			if tc.reject {
+				requireSDKError(t, err, http.StatusBadRequest)
+				return
+			}
+			require.NoError(t, err, "%q must be accepted as a valid role", tc.role)
+		})
+	}
 }
 
 func TestPatchChatACL_SubChatRejected(t *testing.T) {
@@ -201,10 +228,7 @@ func TestDeleteChatACL_ClearsEntries(t *testing.T) {
 	t.Parallel()
 
 	ctx := testutil.Context(t, testutil.WaitLong)
-	rawClient := coderdtest.New(t, &coderdtest.Options{
-		DeploymentValues: chatDeploymentValues(t),
-	})
-	ownerClient := codersdk.NewExperimentalClient(rawClient)
+	ownerClient := newChatClient(t)
 	firstUser := coderdtest.CreateFirstUser(t, ownerClient.Client)
 	_ = createChatModelConfig(t, ownerClient)
 
@@ -587,6 +611,16 @@ func TestGetChatMessages_GroupEntryFlags(t *testing.T) {
 		},
 		typeCounts(assistant.Content),
 	)
+
+	// Group entry grants tool-calls only; Chat.Files must stay empty
+	// because no entry grants ShareAttachments.
+	res, err := viewerClient.Request(ctx, http.MethodGet, "/api/experimental/chats/"+chat.ID.String(), nil)
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	var chatView codersdk.ChatForViewer
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&chatView))
+	require.Empty(t, chatView.Files, "viewer without ShareAttachments must not see chat Files")
 }
 
 func TestGetChatMessages_UnionAcrossEntries(t *testing.T) {
@@ -607,9 +641,11 @@ func TestGetChatMessages_UnionAcrossEntries(t *testing.T) {
 	fileID := insertSharedChatFile(ctx, t, db, firstUser.OrganizationID, firstUser.UserID, chat.ID)
 	insertShareTestAssistantMessage(ctx, t, db, chat.ID, modelConfig.ID, fileID)
 
+	// Attribution: user entry contributes ShareAttachments, group entry
+	// contributes ShareToolCalls. Union must unredact both halves.
 	err := ownerClient.UpdateChatACL(ctx, chat.ID, codersdk.UpdateChatACL{
 		UserRoles: map[string]codersdk.ChatShareEntry{
-			viewer.ID.String(): {Role: codersdk.ChatRoleRead},
+			viewer.ID.String(): {Role: codersdk.ChatRoleRead, ShareAttachments: true},
 		},
 		GroupRoles: map[string]codersdk.ChatShareEntry{
 			group.ID.String(): {Role: codersdk.ChatRoleRead, ShareToolCalls: true},
@@ -627,12 +663,23 @@ func TestGetChatMessages_UnionAcrossEntries(t *testing.T) {
 			"reasoning",
 			"tool-call",
 			"tool-result",
-			"redacted:file",
-			"redacted:file-reference",
-			"redacted:context-file",
+			"file",
+			"file-reference",
+			"context-file",
 		},
 		typeCounts(assistant.Content),
 	)
+
+	// Chat.Files must surface when ShareAttachments is granted by the
+	// user entry — even though the group entry is attachments-off.
+	res, err := viewerClient.Request(ctx, http.MethodGet, "/api/experimental/chats/"+chat.ID.String(), nil)
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	var chatView codersdk.ChatForViewer
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&chatView))
+	require.Len(t, chatView.Files, 1,
+		"viewer with ShareAttachments via user entry must see chat Files")
 }
 
 func TestStreamChat_SharedViewerFiltersToolParts(t *testing.T) {
@@ -660,28 +707,46 @@ func TestStreamChat_SharedViewerFiltersToolParts(t *testing.T) {
 	require.NoError(t, err)
 	defer closer.Close()
 
-	foundRedactedToolPart := false
-	for !foundRedactedToolPart {
+	seenRedactedTool := false
+	seenRedactedAttachment := false
+	for !(seenRedactedTool && seenRedactedAttachment) {
 		select {
 		case <-ctx.Done():
-			require.FailNow(t, "timed out waiting for redacted tool part on viewer stream")
+			require.FailNow(t,
+				"timed out waiting for redacted tool + attachment parts on viewer stream",
+				"seenTool=%v seenAttachment=%v", seenRedactedTool, seenRedactedAttachment)
 		case event, ok := <-events:
 			require.True(t, ok, "viewer stream closed before expected event")
 			require.NotEqual(t, codersdk.ChatStreamEventTypeError, event.Type)
 
-			if event.Type == codersdk.ChatStreamEventTypeMessage &&
-				event.Message != nil &&
-				event.Message.Role == codersdk.ChatMessageRoleAssistant {
-				for _, p := range event.Message.Content {
-					require.NotEqual(t, codersdk.ChatMessagePartTypeToolCall, p.Type,
-						"viewer should never see an un-redacted tool-call part")
-					require.NotEqual(t, codersdk.ChatMessagePartTypeToolResult, p.Type,
-						"viewer should never see an un-redacted tool-result part")
-					if p.Type == codersdk.ChatMessagePartTypeRedacted &&
-						(p.RedactedType == codersdk.ChatMessagePartTypeToolCall ||
-							p.RedactedType == codersdk.ChatMessagePartTypeToolResult) {
-						foundRedactedToolPart = true
-					}
+			if event.Type != codersdk.ChatStreamEventTypeMessage ||
+				event.Message == nil ||
+				event.Message.Role != codersdk.ChatMessageRoleAssistant {
+				continue
+			}
+			for _, p := range event.Message.Content {
+				require.NotEqual(t, codersdk.ChatMessagePartTypeToolCall, p.Type,
+					"viewer should never see an un-redacted tool-call part")
+				require.NotEqual(t, codersdk.ChatMessagePartTypeToolResult, p.Type,
+					"viewer should never see an un-redacted tool-result part")
+				require.NotEqual(t, codersdk.ChatMessagePartTypeFile, p.Type,
+					"viewer without ShareAttachments should never see an un-redacted file part")
+				require.NotEqual(t, codersdk.ChatMessagePartTypeFileReference, p.Type,
+					"viewer without ShareAttachments should never see a file-reference part")
+				require.NotEqual(t, codersdk.ChatMessagePartTypeContextFile, p.Type,
+					"viewer without ShareAttachments should never see a context-file part")
+
+				if p.Type != codersdk.ChatMessagePartTypeRedacted {
+					continue
+				}
+				switch p.RedactedType {
+				case codersdk.ChatMessagePartTypeToolCall,
+					codersdk.ChatMessagePartTypeToolResult:
+					seenRedactedTool = true
+				case codersdk.ChatMessagePartTypeFile,
+					codersdk.ChatMessagePartTypeFileReference,
+					codersdk.ChatMessagePartTypeContextFile:
+					seenRedactedAttachment = true
 				}
 			}
 		}
