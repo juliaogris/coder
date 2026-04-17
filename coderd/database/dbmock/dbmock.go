@@ -685,20 +685,6 @@ func (mr *MockStoreMockRecorder) DeleteChatACLByID(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteChatACLByID", reflect.TypeOf((*MockStore)(nil).DeleteChatACLByID), ctx, id)
 }
 
-// DeleteChatACLsByOrganization mocks base method.
-func (m *MockStore) DeleteChatACLsByOrganization(ctx context.Context, arg database.DeleteChatACLsByOrganizationParams) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteChatACLsByOrganization", ctx, arg)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// DeleteChatACLsByOrganization indicates an expected call of DeleteChatACLsByOrganization.
-func (mr *MockStoreMockRecorder) DeleteChatACLsByOrganization(ctx, arg any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteChatACLsByOrganization", reflect.TypeOf((*MockStore)(nil).DeleteChatACLsByOrganization), ctx, arg)
-}
-
 // DeleteChatDebugDataAfterMessageID mocks base method.
 func (m *MockStore) DeleteChatDebugDataAfterMessageID(ctx context.Context, arg database.DeleteChatDebugDataAfterMessageIDParams) (int64, error) {
 	m.ctrl.T.Helper()
@@ -8664,21 +8650,6 @@ func (m *MockStore) UpdateOrganization(ctx context.Context, arg database.UpdateO
 func (mr *MockStoreMockRecorder) UpdateOrganization(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateOrganization", reflect.TypeOf((*MockStore)(nil).UpdateOrganization), ctx, arg)
-}
-
-// UpdateOrganizationChatSharingSettings mocks base method.
-func (m *MockStore) UpdateOrganizationChatSharingSettings(ctx context.Context, arg database.UpdateOrganizationChatSharingSettingsParams) (database.Organization, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateOrganizationChatSharingSettings", ctx, arg)
-	ret0, _ := ret[0].(database.Organization)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// UpdateOrganizationChatSharingSettings indicates an expected call of UpdateOrganizationChatSharingSettings.
-func (mr *MockStoreMockRecorder) UpdateOrganizationChatSharingSettings(ctx, arg any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateOrganizationChatSharingSettings", reflect.TypeOf((*MockStore)(nil).UpdateOrganizationChatSharingSettings), ctx, arg)
 }
 
 // UpdateOrganizationDeletedByID mocks base method.

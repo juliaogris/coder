@@ -2221,15 +2221,6 @@ export type ChatSharedFilter = "include" | "" | "only";
 
 export const ChatSharedFilters: ChatSharedFilter[] = ["include", "", "only"];
 
-// From codersdk/chatsharing.go
-/**
- * ChatSharingSettings represents chat sharing settings affecting an organization.
- */
-export interface ChatSharingSettings {
-	readonly sharing_globally_disabled: boolean;
-	readonly shareable_chat_owners: ShareableChatOwners;
-}
-
 // From codersdk/chats.go
 export interface ChatSkillPart {
 	readonly type: "skill";
@@ -6837,15 +6828,6 @@ export interface SessionLifetime {
  */
 export const SessionTokenHeader = "Coder-Session-Token";
 
-// From codersdk/chatsharing.go
-export type ShareableChatOwners = "everyone" | "none" | "service_accounts";
-
-export const ShareableChatOwnerses: ShareableChatOwners[] = [
-	"everyone",
-	"none",
-	"service_accounts",
-];
-
 // From codersdk/workspacesharing.go
 export type ShareableWorkspaceOwners = "everyone" | "none" | "service_accounts";
 
@@ -7830,14 +7812,6 @@ export interface UpdateChatRequest {
  */
 export interface UpdateChatRetentionDaysRequest {
 	readonly retention_days: number;
-}
-
-// From codersdk/chatsharing.go
-/**
- * UpdateChatSharingSettingsRequest represents chat sharing settings that can be updated for an organization.
- */
-export interface UpdateChatSharingSettingsRequest {
-	readonly shareable_chat_owners?: ShareableChatOwners;
 }
 
 // From codersdk/chats.go

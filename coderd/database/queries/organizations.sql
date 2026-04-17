@@ -152,13 +152,3 @@ SET
 WHERE
     id = @id
 RETURNING *;
-
--- name: UpdateOrganizationChatSharingSettings :one
-UPDATE
-    organizations
-SET
-    shareable_chat_owners = @shareable_chat_owners,
-    updated_at = @updated_at
-WHERE
-    id = @id
-RETURNING *;

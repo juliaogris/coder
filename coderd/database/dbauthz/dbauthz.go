@@ -1877,13 +1877,6 @@ func (q *querier) DeleteChatACLByID(ctx context.Context, id uuid.UUID) error {
 	return fetchAndExec(q.log, q.auth, policy.ActionShare, fetch, q.db.DeleteChatACLByID)(ctx, id)
 }
 
-func (q *querier) DeleteChatACLsByOrganization(ctx context.Context, arg database.DeleteChatACLsByOrganizationParams) error {
-	if err := q.authorizeContext(ctx, policy.ActionUpdate, rbac.ResourceSystem); err != nil {
-		return err
-	}
-	return q.db.DeleteChatACLsByOrganization(ctx, arg)
-}
-
 func (q *querier) DeleteChatDebugDataAfterMessageID(ctx context.Context, arg database.DeleteChatDebugDataAfterMessageIDParams) (int64, error) {
 	chat, err := q.db.GetChatByID(ctx, arg.ChatID)
 	if err != nil {
@@ -6397,13 +6390,6 @@ func (q *querier) UpdateOrganization(ctx context.Context, arg database.UpdateOrg
 		return q.db.GetOrganizationByID(ctx, arg.ID)
 	}
 	return updateWithReturn(q.log, q.auth, fetch, q.db.UpdateOrganization)(ctx, arg)
-}
-
-func (q *querier) UpdateOrganizationChatSharingSettings(ctx context.Context, arg database.UpdateOrganizationChatSharingSettingsParams) (database.Organization, error) {
-	fetch := func(ctx context.Context, arg database.UpdateOrganizationChatSharingSettingsParams) (database.Organization, error) {
-		return q.db.GetOrganizationByID(ctx, arg.ID)
-	}
-	return updateWithReturn(q.log, q.auth, fetch, q.db.UpdateOrganizationChatSharingSettings)(ctx, arg)
 }
 
 func (q *querier) UpdateOrganizationDeletedByID(ctx context.Context, arg database.UpdateOrganizationDeletedByIDParams) error {

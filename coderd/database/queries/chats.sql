@@ -245,21 +245,6 @@ SET
 WHERE
     id = @id::uuid;
 
--- name: DeleteChatACLsByOrganization :exec
-UPDATE
-    chats
-SET
-    user_acl  = '{}'::jsonb,
-    group_acl = '{}'::jsonb
-WHERE
-    organization_id = @organization_id::uuid
-    AND (
-        NOT @exclude_service_accounts::boolean
-        OR owner_id NOT IN (
-            SELECT id FROM users WHERE is_service_account = true
-        )
-    );
-
 -- name: GetChatMessageByID :one
 SELECT
     *

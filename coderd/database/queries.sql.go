@@ -5187,32 +5187,6 @@ func (q *sqlQuerier) DeleteChatACLByID(ctx context.Context, id uuid.UUID) error 
 	return err
 }
 
-const deleteChatACLsByOrganization = `-- name: DeleteChatACLsByOrganization :exec
-UPDATE
-    chats
-SET
-    user_acl  = '{}'::jsonb,
-    group_acl = '{}'::jsonb
-WHERE
-    organization_id = $1::uuid
-    AND (
-        NOT $2::boolean
-        OR owner_id NOT IN (
-            SELECT id FROM users WHERE is_service_account = true
-        )
-    )
-`
-
-type DeleteChatACLsByOrganizationParams struct {
-	OrganizationID         uuid.UUID `db:"organization_id" json:"organization_id"`
-	ExcludeServiceAccounts bool      `db:"exclude_service_accounts" json:"exclude_service_accounts"`
-}
-
-func (q *sqlQuerier) DeleteChatACLsByOrganization(ctx context.Context, arg DeleteChatACLsByOrganizationParams) error {
-	_, err := q.db.ExecContext(ctx, deleteChatACLsByOrganization, arg.OrganizationID, arg.ExcludeServiceAccounts)
-	return err
-}
-
 const deleteChatQueuedMessage = `-- name: DeleteChatQueuedMessage :exec
 DELETE FROM chat_queued_messages WHERE id = $1 AND chat_id = $2
 `
@@ -16046,42 +16020,6 @@ func (q *sqlQuerier) UpdateOrganization(ctx context.Context, arg UpdateOrganizat
 		arg.Icon,
 		arg.ID,
 	)
-	var i Organization
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.Description,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.IsDefault,
-		&i.DisplayName,
-		&i.Icon,
-		&i.Deleted,
-		&i.ShareableWorkspaceOwners,
-		&i.ShareableChatOwners,
-	)
-	return i, err
-}
-
-const updateOrganizationChatSharingSettings = `-- name: UpdateOrganizationChatSharingSettings :one
-UPDATE
-    organizations
-SET
-    shareable_chat_owners = $1,
-    updated_at = $2
-WHERE
-    id = $3
-RETURNING id, name, description, created_at, updated_at, is_default, display_name, icon, deleted, shareable_workspace_owners, shareable_chat_owners
-`
-
-type UpdateOrganizationChatSharingSettingsParams struct {
-	ShareableChatOwners ShareableChatOwners `db:"shareable_chat_owners" json:"shareable_chat_owners"`
-	UpdatedAt           time.Time           `db:"updated_at" json:"updated_at"`
-	ID                  uuid.UUID           `db:"id" json:"id"`
-}
-
-func (q *sqlQuerier) UpdateOrganizationChatSharingSettings(ctx context.Context, arg UpdateOrganizationChatSharingSettingsParams) (Organization, error) {
-	row := q.db.QueryRowContext(ctx, updateOrganizationChatSharingSettings, arg.ShareableChatOwners, arg.UpdatedAt, arg.ID)
 	var i Organization
 	err := row.Scan(
 		&i.ID,
