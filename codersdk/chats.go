@@ -378,12 +378,8 @@ type ViewerShareFlags struct {
 	ShareAttachments bool
 }
 
-// FilterChatMessagePartsForViewer applies the redaction allow-list:
-// tool-call / tool-result parts need ShareToolCalls; file, file-reference,
-// context-file parts need ShareAttachments. Other types pass through.
-// A new ChatMessagePartType is forwarded to viewers by default —
-// contributors adding a type that carries sensitive content must
-// extend this function.
+// New ChatMessagePartType values pass through by default; contributors
+// adding a type that carries sensitive content must extend this function.
 func FilterChatMessagePartsForViewer(
 	parts []ChatMessagePart,
 	flags ViewerShareFlags,

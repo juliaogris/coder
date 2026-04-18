@@ -1543,11 +1543,8 @@ func (api *API) getChat(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if flags.ShareAttachments && len(chatFiles) == 0 {
-		// The viewer has ShareAttachments granted but the RBAC-filtered
-		// fetch returned empty because the chat owner owns the files and
-		// the viewer lacks file:read on the owner's files. Re-fetch as
-		// the system so the viewer sees the attachments the chat ACL
-		// already authorized.
+		// Chat ACL authorized attachments but the viewer lacks file:read
+		// on the owner's files; re-fetch as system for viewer parity.
 		//nolint:gocritic
 		chatFiles = api.fetchChatFileMetadata(dbauthz.AsSystemRestricted(ctx), chat.ID)
 	}

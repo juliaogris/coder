@@ -599,12 +599,6 @@ func TestParseChatWorkspaceTTL(t *testing.T) {
 	}
 }
 
-// TestChatMessagePartForViewerParity asserts every exported field on
-// ChatMessagePart is reachable through ChatMessagePartForViewer with the
-// same JSON tag, type, and variant tag. The viewer type embeds the base
-// type, so adding a new field to ChatMessagePart is automatically
-// forwarded to viewers — this test pins that invariant so a future
-// refactor cannot silently break it.
 func TestChatMessagePartForViewerParity(t *testing.T) {
 	t.Parallel()
 

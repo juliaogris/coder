@@ -279,7 +279,6 @@ func writeChatACLSubChatError(ctx context.Context, rw http.ResponseWriter, chat 
 	case chat.RootChatID.Valid:
 		rootID = chat.RootChatID.UUID
 	case chat.ParentChatID.Valid:
-		// root_chat_id is NULL on sub-chats inserted before denormalization; parent is the next-best hop.
 		rootID = chat.ParentChatID.UUID
 	}
 	httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
@@ -323,8 +322,6 @@ func projectChatShareEntryRoles(entries map[string]codersdk.ChatShareEntry) map[
 	return roles
 }
 
-// Unknown permissions map to ChatRoleDeleted so stale or corrupt entries
-// are not misread as read access.
 func convertToChatRole(actions []policy.Action) codersdk.ChatRole {
 	if slice.SameElements(actions, db2sdk.ChatRoleActions(codersdk.ChatRoleRead)) {
 		return codersdk.ChatRoleRead
