@@ -594,14 +594,18 @@ func TestSpawnExploreAgent_FallsBackWhenOverrideCredentialsAreUnavailable(t *tes
 	currentTurnModel := insertInternalChatModelConfig(
 		t, db, "explore-missing-user-key-current-"+uuid.NewString(), true,
 	)
-	dbgen.ChatProvider(t, db, database.ChatProvider{
+	// Use raw insert because takeFirst treats false/"" as zero,
+	// overriding CentralApiKeyEnabled and APIKey to defaults.
+	_, err := db.InsertChatProvider(dbauthz.AsSystemRestricted(context.Background()), database.InsertChatProviderParams{
 		Provider:                   "openai-compat",
 		DisplayName:                "OpenAI Compat",
 		APIKey:                     "",
 		CentralApiKeyEnabled:       false,
 		AllowUserApiKey:            true,
 		AllowCentralApiKeyFallback: false,
+		Enabled:                    true,
 	})
+	require.NoError(t, err)
 	overrideModel := dbgen.ChatModelConfig(t, db, database.ChatModelConfig{
 		Provider:    "openai-compat",
 		Model:       "gpt-4o-mini",
