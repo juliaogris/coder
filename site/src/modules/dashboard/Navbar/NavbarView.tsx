@@ -61,7 +61,11 @@ export const NavbarView: FC<NavbarViewProps> = ({
 	canCreateChat,
 	proxyContextValue,
 }) => {
-	const prerelease = getPrereleaseFlag(buildInfo);
+	const { metadata } = useEmbeddedMetadata();
+	const prerelease =
+		metadata["hide-prerelease"].value === true
+			? undefined
+			: getPrereleaseFlag(buildInfo);
 
 	return (
 		<div

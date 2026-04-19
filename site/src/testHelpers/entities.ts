@@ -562,6 +562,8 @@ export const MockUserAppearanceSettings: TypesGen.UserAppearanceSettings = {
 
 export const MockTasksTabVisible: boolean = false;
 
+export const MockHidePrerelease: boolean = false;
+
 export const MockAgentsTabVisible: boolean = false;
 
 export const MockOrganizationMember: TypesGen.OrganizationMemberWithUserData = {

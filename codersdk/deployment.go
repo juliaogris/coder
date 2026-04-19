@@ -643,6 +643,7 @@ type DeploymentValues struct {
 	WorkspaceHostnameSuffix                 serpent.String                       `json:"workspace_hostname_suffix,omitempty" typescript:",notnull"`
 	Prebuilds                               PrebuildsConfig                      `json:"workspace_prebuilds,omitempty" typescript:",notnull"`
 	HideAITasks                             serpent.Bool                         `json:"hide_ai_tasks,omitempty" typescript:",notnull"`
+	HidePrerelease                          serpent.Bool                         `json:"hide_prerelease,omitempty" typescript:",notnull"`
 	AI                                      AIConfig                             `json:"ai,omitempty"`
 	StatsCollection                         StatsCollectionConfig                `json:"stats_collection,omitempty" typescript:",notnull"`
 
@@ -3611,6 +3612,16 @@ Write out the current server config as YAML to stdout.`,
 			Value:       &c.HideAITasks,
 			Group:       &deploymentGroupClient,
 			YAML:        "hideAITasks",
+		},
+		{
+			Name:        "Hide Prerelease UI",
+			Description: "Hide prerelease indicators in the dashboard (dev/RC navbar stripes and version badge).",
+			Flag:        "hide-prerelease",
+			Env:         "CODER_HIDE_PRERELEASE",
+			Default:     "false",
+			Value:       &c.HidePrerelease,
+			Group:       &deploymentGroupClient,
+			YAML:        "hidePrerelease",
 		},
 		// Chat Options
 		{

@@ -33,6 +33,7 @@ type AvailableMetadata = Readonly<{
 	"build-info": BuildInfoResponse;
 	"tasks-tab-visible": boolean;
 	"agents-tab-visible": boolean;
+	"hide-prerelease": boolean;
 	permissions: Permissions;
 	organizations: Organization[];
 }>;
@@ -98,6 +99,7 @@ export class MetadataManager implements MetadataManagerApi {
 			regions: this.registerRegionValue(),
 			"tasks-tab-visible": this.registerValue<boolean>("tasks-tab-visible"),
 			"agents-tab-visible": this.registerValue<boolean>("agents-tab-visible"),
+			"hide-prerelease": this.registerValue<boolean>("hide-prerelease"),
 			permissions: this.registerValue<Permissions>("permissions"),
 			organizations: this.registerValue<Organization[]>("organizations"),
 		};

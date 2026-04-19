@@ -678,7 +678,8 @@ func New(options *Options) *API {
 		Entitlements:      options.Entitlements,
 		Telemetry:         options.Telemetry,
 		Logger:            options.Logger.Named("site"),
-		HideAITasks:       options.DeploymentValues.HideAITasks.Value(),
+		HideAITasks:    options.DeploymentValues.HideAITasks.Value(),
+		HidePrerelease: options.DeploymentValues.HidePrerelease.Value(),
 	})
 	if err != nil {
 		options.Logger.Fatal(ctx, "failed to initialize site handler", slog.Error(err))

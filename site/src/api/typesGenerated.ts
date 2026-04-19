@@ -3460,6 +3460,7 @@ export interface DeploymentValues {
 	readonly workspace_hostname_suffix?: string;
 	readonly workspace_prebuilds?: PrebuildsConfig;
 	readonly hide_ai_tasks?: boolean;
+	readonly hide_prerelease?: boolean;
 	readonly ai?: AIConfig;
 	readonly stats_collection?: StatsCollectionConfig;
 	readonly config?: string;

@@ -83,6 +83,7 @@ type Options struct {
 	Telemetry         telemetry.Reporter
 	Logger            slog.Logger
 	HideAITasks       bool
+	HidePrerelease    bool
 }
 
 func New(opts *Options) (*Handler, error) {
@@ -169,6 +170,9 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		CSRF:      csrfState{Token: nosurf.Token(r)},
 		BuildInfo: h.buildInfoJSON,
 		DocsURL:   h.opts.DocsURL,
+	}
+	if data, err := json.Marshal(h.opts.HidePrerelease); err == nil {
+		state.HidePrerelease = html.EscapeString(string(data))
 	}
 
 	// First check if it's a file we have in our templates
@@ -270,6 +274,9 @@ type htmlState struct {
 	AgentsTabVisible string
 	Permissions      string
 	Organizations    string
+
+	// HidePrerelease is an HTML-escaped JSON boolean ("true"/"false").
+	HidePrerelease string
 }
 
 type csrfState struct {
