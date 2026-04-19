@@ -562,8 +562,6 @@ export const MockUserAppearanceSettings: TypesGen.UserAppearanceSettings = {
 
 export const MockTasksTabVisible: boolean = false;
 
-export const MockHidePrerelease: boolean = false;
-
 export const MockAgentsTabVisible: boolean = false;
 
 export const MockOrganizationMember: TypesGen.OrganizationMemberWithUserData = {
@@ -3209,6 +3207,7 @@ export const MockAppearanceConfig: TypesGen.AppearanceConfig = {
 	},
 	announcement_banners: [],
 	docs_url: "https://coder.com/docs/@main/",
+	hide_prerelease: false,
 };
 
 export const MockWorkspaceBuildParameter1: TypesGen.WorkspaceBuildParameter = {

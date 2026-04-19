@@ -42,21 +42,28 @@ func (api *API) appearance(rw http.ResponseWriter, r *http.Request) {
 }
 
 type appearanceFetcher struct {
-	database     database.Store
-	supportLinks []codersdk.LinkConfig
-	docsURL      string
-	coderVersion string
+	database       database.Store
+	supportLinks   []codersdk.LinkConfig
+	docsURL        string
+	coderVersion   string
+	hidePrerelease bool
 }
 
-func newAppearanceFetcher(store database.Store, links []codersdk.LinkConfig, docsURL, coderVersion string) agpl.Fetcher {
+func newAppearanceFetcher(
+	store database.Store,
+	links []codersdk.LinkConfig,
+	docsURL, coderVersion string,
+	hidePrerelease bool,
+) agpl.Fetcher {
 	if docsURL == "" {
 		docsURL = codersdk.DefaultDocsURL()
 	}
 	return &appearanceFetcher{
-		database:     store,
-		supportLinks: links,
-		docsURL:      docsURL,
-		coderVersion: coderVersion,
+		database:       store,
+		supportLinks:   links,
+		docsURL:        docsURL,
+		coderVersion:   coderVersion,
+		hidePrerelease: hidePrerelease,
 	}
 }
 
@@ -99,6 +106,7 @@ func (f *appearanceFetcher) Fetch(ctx context.Context) (codersdk.AppearanceConfi
 		AnnouncementBanners: []codersdk.BannerConfig{},
 		SupportLinks:        codersdk.DefaultSupportLinks(f.docsURL),
 		DocsURL:             f.docsURL,
+		HidePrerelease:      f.hidePrerelease,
 	}
 
 	if announcementBannersJSON != "" {

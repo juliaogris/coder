@@ -40,6 +40,7 @@ export const Navbar: FC = () => {
 			user={me}
 			logo_url={appearance.logo_url}
 			buildInfo={buildInfoQuery.data}
+			hidePrereleaseUi={appearance.hide_prerelease}
 			supportLinks={Array.from(uniqueLinks.values())}
 			onSignOut={signOut}
 			canViewDeployment={canViewDeployment}

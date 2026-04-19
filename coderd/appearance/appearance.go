@@ -11,7 +11,8 @@ type Fetcher interface {
 }
 
 type AGPLFetcher struct {
-	docsURL string
+	docsURL        string
+	hidePrerelease bool
 }
 
 func (f AGPLFetcher) Fetch(context.Context) (codersdk.AppearanceConfig, error) {
@@ -19,14 +20,16 @@ func (f AGPLFetcher) Fetch(context.Context) (codersdk.AppearanceConfig, error) {
 		AnnouncementBanners: []codersdk.BannerConfig{},
 		SupportLinks:        codersdk.DefaultSupportLinks(f.docsURL),
 		DocsURL:             f.docsURL,
+		HidePrerelease:      f.hidePrerelease,
 	}, nil
 }
 
-func NewDefaultFetcher(docsURL string) Fetcher {
+func NewDefaultFetcher(docsURL string, hidePrerelease bool) Fetcher {
 	if docsURL == "" {
 		docsURL = codersdk.DefaultDocsURL()
 	}
 	return &AGPLFetcher{
-		docsURL: docsURL,
+		docsURL:        docsURL,
+		hidePrerelease: hidePrerelease,
 	}
 }

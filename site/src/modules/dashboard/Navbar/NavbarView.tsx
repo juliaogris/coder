@@ -28,6 +28,8 @@ interface NavbarViewProps {
 	logo_url?: string;
 	user: TypesGen.User;
 	buildInfo?: TypesGen.BuildInfoResponse;
+	/** From GET /appearance; hides dev/RC navbar chrome when deployment sets CODER_HIDE_PRERELEASE. */
+	hidePrereleaseUi?: boolean;
 	supportLinks: readonly TypesGen.LinkConfig[];
 	onSignOut: () => void;
 	canViewDeployment: boolean;
@@ -50,6 +52,7 @@ export const NavbarView: FC<NavbarViewProps> = ({
 	user,
 	logo_url,
 	buildInfo,
+	hidePrereleaseUi,
 	supportLinks,
 	onSignOut,
 	canViewDeployment,
@@ -61,11 +64,9 @@ export const NavbarView: FC<NavbarViewProps> = ({
 	canCreateChat,
 	proxyContextValue,
 }) => {
-	const { metadata } = useEmbeddedMetadata();
-	const prerelease =
-		metadata["hide-prerelease"].value === true
-			? undefined
-			: getPrereleaseFlag(buildInfo);
+	const prerelease = hidePrereleaseUi
+		? undefined
+		: getPrereleaseFlag(buildInfo);
 
 	return (
 		<div

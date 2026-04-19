@@ -6,7 +6,6 @@ import {
 	MockBuildInfo,
 	MockEntitlements,
 	MockExperiments,
-	MockHidePrerelease,
 	MockOrganization,
 	MockPermissions,
 	MockTasksTabVisible,
@@ -48,7 +47,6 @@ const mockDataForTags = {
 	regions: MockRegions,
 	"tasks-tab-visible": MockTasksTabVisible,
 	"agents-tab-visible": MockAgentsTabVisible,
-	"hide-prerelease": MockHidePrerelease,
 	permissions: MockPermissions,
 	organizations: [MockOrganization],
 } as const satisfies Record<MetadataKey, MetadataValue>;
@@ -87,10 +85,6 @@ const emptyMetadata: RuntimeHtmlMetadata = {
 		value: undefined,
 	},
 	"agents-tab-visible": {
-		available: false,
-		value: undefined,
-	},
-	"hide-prerelease": {
 		available: false,
 		value: undefined,
 	},
@@ -140,10 +134,6 @@ const populatedMetadata: RuntimeHtmlMetadata = {
 	"agents-tab-visible": {
 		available: true,
 		value: MockAgentsTabVisible,
-	},
-	"hide-prerelease": {
-		available: true,
-		value: MockHidePrerelease,
 	},
 	permissions: {
 		available: true,

@@ -4285,6 +4285,8 @@ type AppearanceConfig struct {
 	ServiceBanner       BannerConfig   `json:"service_banner"`
 	AnnouncementBanners []BannerConfig `json:"announcement_banners"`
 	SupportLinks        []LinkConfig   `json:"support_links,omitempty"`
+	// HidePrerelease is controlled by deployment (CODER_HIDE_PRERELEASE); not editable via PUT /appearance.
+	HidePrerelease bool `json:"hide_prerelease,omitempty"`
 }
 
 type UpdateAppearanceConfig struct {

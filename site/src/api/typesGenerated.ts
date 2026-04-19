@@ -852,6 +852,10 @@ export interface AppearanceConfig {
 	readonly service_banner: BannerConfig;
 	readonly announcement_banners: readonly BannerConfig[];
 	readonly support_links?: readonly LinkConfig[];
+	/**
+	 * HidePrerelease is controlled by deployment (CODER_HIDE_PRERELEASE); not editable via PUT /appearance.
+	 */
+	readonly hide_prerelease?: boolean;
 }
 
 // From codersdk/templates.go

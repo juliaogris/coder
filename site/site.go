@@ -83,13 +83,12 @@ type Options struct {
 	Telemetry         telemetry.Reporter
 	Logger            slog.Logger
 	HideAITasks       bool
-	HidePrerelease    bool
 }
 
 func New(opts *Options) (*Handler, error) {
 	if opts.AppearanceFetcher == nil {
 		daf := atomic.Pointer[appearance.Fetcher]{}
-		f := appearance.NewDefaultFetcher(opts.DocsURL)
+		f := appearance.NewDefaultFetcher(opts.DocsURL, false)
 		daf.Store(&f)
 		opts.AppearanceFetcher = &daf
 	}
@@ -171,10 +170,6 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		BuildInfo: h.buildInfoJSON,
 		DocsURL:   h.opts.DocsURL,
 	}
-	if data, err := json.Marshal(h.opts.HidePrerelease); err == nil {
-		state.HidePrerelease = html.EscapeString(string(data))
-	}
-
 	// First check if it's a file we have in our templates
 	if h.serveHTML(rw, r, reqFile, state) {
 		return
@@ -274,9 +269,6 @@ type htmlState struct {
 	AgentsTabVisible string
 	Permissions      string
 	Organizations    string
-
-	// HidePrerelease is an HTML-escaped JSON boolean ("true"/"false").
-	HidePrerelease string
 }
 
 type csrfState struct {

@@ -649,7 +649,10 @@ func New(options *Options) *API {
 		options.AppSigningKeyCache,
 	)
 
-	f := appearance.NewDefaultFetcher(api.DeploymentValues.DocsURL.String())
+	f := appearance.NewDefaultFetcher(
+		api.DeploymentValues.DocsURL.String(),
+		api.DeploymentValues.HidePrerelease.Value(),
+	)
 	api.AppearanceFetcher.Store(&f)
 	api.PortSharer.Store(&portsharing.DefaultPortSharer)
 	api.PrebuildsClaimer.Store(&prebuilds.DefaultClaimer)
@@ -678,8 +681,7 @@ func New(options *Options) *API {
 		Entitlements:      options.Entitlements,
 		Telemetry:         options.Telemetry,
 		Logger:            options.Logger.Named("site"),
-		HideAITasks:    options.DeploymentValues.HideAITasks.Value(),
-		HidePrerelease: options.DeploymentValues.HidePrerelease.Value(),
+		HideAITasks: options.DeploymentValues.HideAITasks.Value(),
 	})
 	if err != nil {
 		options.Logger.Fatal(ctx, "failed to initialize site handler", slog.Error(err))
