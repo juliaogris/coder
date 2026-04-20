@@ -558,6 +558,10 @@ client:
   # Hide AI tasks from the dashboard.
   # (default: false, type: bool)
   hideAITasks: false
+  # Hide prerelease indicators in the dashboard (dev/RC navbar stripes and version
+  # badge).
+  # (default: false, type: bool)
+  hidePrerelease: false
 # Support links to display in the top right drop down menu.
 # (default: <unset>, type: struct[[]codersdk.LinkConfig])
 supportLinks: []

@@ -1702,6 +1702,17 @@ How often to reconcile workspace prebuilds state.
 
 Hide AI tasks from the dashboard.
 
+### --hide-prerelease
+
+|             |                                     |
+|-------------|-------------------------------------|
+| Type        | <code>bool</code>                   |
+| Environment | <code>$CODER_HIDE_PRERELEASE</code> |
+| YAML        | <code>client.hidePrerelease</code>  |
+| Default     | <code>false</code>                  |
+
+Hide prerelease indicators in the dashboard (dev/RC navbar stripes and version badge).
+
 ### --chat-debug-logging-enabled
 
 |             |                                                |

@@ -14307,6 +14307,10 @@ const docTemplate = `{
                 "docs_url": {
                     "type": "string"
                 },
+                "hide_prerelease": {
+                    "description": "HidePrerelease is controlled by deployment (CODER_HIDE_PRERELEASE); not editable via PUT /appearance.",
+                    "type": "boolean"
+                },
                 "logo_url": {
                     "type": "string"
                 },
@@ -15967,6 +15971,9 @@ const docTemplate = `{
                     "$ref": "#/definitions/codersdk.HealthcheckConfig"
                 },
                 "hide_ai_tasks": {
+                    "type": "boolean"
+                },
+                "hide_prerelease": {
                     "type": "boolean"
                 },
                 "http_address": {

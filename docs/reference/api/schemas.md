@@ -1493,6 +1493,7 @@
   ],
   "application_name": "string",
   "docs_url": "string",
+  "hide_prerelease": true,
   "logo_url": "string",
   "service_banner": {
     "background_color": "string",
@@ -1512,14 +1513,15 @@
 
 ### Properties
 
-| Name                   | Type                                                    | Required | Restrictions | Description                                                         |
-|------------------------|---------------------------------------------------------|----------|--------------|---------------------------------------------------------------------|
-| `announcement_banners` | array of [codersdk.BannerConfig](#codersdkbannerconfig) | false    |              |                                                                     |
-| `application_name`     | string                                                  | false    |              |                                                                     |
-| `docs_url`             | string                                                  | false    |              |                                                                     |
-| `logo_url`             | string                                                  | false    |              |                                                                     |
-| `service_banner`       | [codersdk.BannerConfig](#codersdkbannerconfig)          | false    |              | Deprecated: ServiceBanner has been replaced by AnnouncementBanners. |
-| `support_links`        | array of [codersdk.LinkConfig](#codersdklinkconfig)     | false    |              |                                                                     |
+| Name                   | Type                                                    | Required | Restrictions | Description                                                                                            |
+|------------------------|---------------------------------------------------------|----------|--------------|--------------------------------------------------------------------------------------------------------|
+| `announcement_banners` | array of [codersdk.BannerConfig](#codersdkbannerconfig) | false    |              |                                                                                                        |
+| `application_name`     | string                                                  | false    |              |                                                                                                        |
+| `docs_url`             | string                                                  | false    |              |                                                                                                        |
+| `hide_prerelease`      | boolean                                                 | false    |              | Hide prerelease is controlled by deployment (CODER_HIDE_PRERELEASE); not editable via PUT /appearance. |
+| `logo_url`             | string                                                  | false    |              |                                                                                                        |
+| `service_banner`       | [codersdk.BannerConfig](#codersdkbannerconfig)          | false    |              | Deprecated: ServiceBanner has been replaced by AnnouncementBanners.                                    |
+| `support_links`        | array of [codersdk.LinkConfig](#codersdklinkconfig)     | false    |              |                                                                                                        |
 
 ## codersdk.ArchiveTemplateVersionsRequest
 
@@ -3443,6 +3445,7 @@ CreateWorkspaceRequest provides options for creating a new workspace. Only one o
       "threshold_database": 0
     },
     "hide_ai_tasks": true,
+    "hide_prerelease": true,
     "http_address": "string",
     "http_cookies": {
       "host_prefix": true,
@@ -4033,6 +4036,7 @@ CreateWorkspaceRequest provides options for creating a new workspace. Only one o
     "threshold_database": 0
   },
   "hide_ai_tasks": true,
+  "hide_prerelease": true,
   "http_address": "string",
   "http_cookies": {
     "host_prefix": true,
@@ -4365,6 +4369,7 @@ CreateWorkspaceRequest provides options for creating a new workspace. Only one o
 | `external_token_encryption_keys`               | array of string                                                                                      | false    |              |                                                                    |
 | `healthcheck`                                  | [codersdk.HealthcheckConfig](#codersdkhealthcheckconfig)                                             | false    |              |                                                                    |
 | `hide_ai_tasks`                                | boolean                                                                                              | false    |              |                                                                    |
+| `hide_prerelease`                              | boolean                                                                                              | false    |              |                                                                    |
 | `http_address`                                 | string                                                                                               | false    |              | Http address is a string because it may be set to zero to disable. |
 | `http_cookies`                                 | [codersdk.HTTPCookieConfig](#codersdkhttpcookieconfig)                                               | false    |              |                                                                    |
 | `job_hang_detector_interval`                   | integer                                                                                              | false    |              |                                                                    |

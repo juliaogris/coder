@@ -334,6 +334,7 @@ curl -X GET http://coder-server:8080/api/v2/deployment/config \
       "threshold_database": 0
     },
     "hide_ai_tasks": true,
+    "hide_prerelease": true,
     "http_address": "string",
     "http_cookies": {
       "host_prefix": true,
