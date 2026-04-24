@@ -112,6 +112,16 @@ type ServerOptions struct {
 
 	AgentProvider  AgentProvider
 	StatsCollector *StatsCollector
+
+	// AdditionalAllowedOrigins is an optional list of extra hostnames
+	// to accept on workspace-app WebSocket upgrades (for example the
+	// reconnecting PTY terminal). The upgrade handler already allows
+	// DashboardURL.Host and AccessURL.Host; AdditionalAllowedOrigins
+	// is for deployments fronted by an upstream proxy whose
+	// public hostname is not equal to either of those. Each entry is
+	// a host[:port] string; schemes are ignored. Leave empty when the
+	// access URL is the public URL.
+	AdditionalAllowedOrigins []string
 }
 
 // Server serves workspace apps endpoints, including:
@@ -132,6 +142,24 @@ func NewServer(options ServerOptions) *Server {
 		ServerOptions: options,
 		cookies:       NewAppCookies(options.Hostname),
 	}
+}
+
+// allowedTerminalOrigins returns the list of Origin host patterns
+// accepted on workspace-app WebSocket upgrades. The dashboard and
+// access URLs are always allowed; AdditionalAllowedOrigins lets an
+// IAP-fronted deployment extend the list with its public hostname
+// without having to conflate AccessURL with the public URL.
+func (s *Server) allowedTerminalOrigins() []string {
+	origins := make([]string, 0, 2+len(s.AdditionalAllowedOrigins))
+	origins = append(origins, s.DashboardURL.Host, s.AccessURL.Host)
+	for _, o := range s.AdditionalAllowedOrigins {
+		o = strings.TrimSpace(o)
+		if o == "" {
+			continue
+		}
+		origins = append(origins, o)
+	}
+	return origins
 }
 
 // Close waits for all reconnecting-pty WebSocket connections to drain before
@@ -753,10 +781,7 @@ func (s *Server) workspaceAgentPTY(rw http.ResponseWriter, r *http.Request) {
 		CompressionMode: websocket.CompressionDisabled,
 		// Always allow websockets from the primary dashboard URL.
 		// Terminals are opened there and connect to the proxy.
-		OriginPatterns: []string{
-			s.DashboardURL.Host,
-			s.AccessURL.Host,
-		},
+		OriginPatterns: s.allowedTerminalOrigins(),
 	})
 	if err != nil {
 		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{

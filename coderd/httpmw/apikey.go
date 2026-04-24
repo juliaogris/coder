@@ -72,6 +72,27 @@ func (e *ValidateAPIKeyError) Error() string {
 	return e.Response.Message
 }
 
+// APIKeyPrecheckedSource records which top-level extension produced a
+// prechecked result. ExtractAPIKey uses it to decide whether the result
+// is safe to consume when the route has its own SessionTokenFunc (for
+// example workspace app token issuance, which validates against an app
+// cookie rather than the top-level session token).
+type APIKeyPrecheckedSource int
+
+const (
+	// APIKeyPrecheckedSourceSessionToken is the default source and
+	// covers PrecheckAPIKey, which validates the top-level session
+	// token on every request. A custom SessionTokenFunc on a downstream
+	// ExtractAPIKey call overrides this source, because the precheck
+	// may have validated a different token than the route wants.
+	APIKeyPrecheckedSourceSessionToken APIKeyPrecheckedSource = iota
+	// APIKeyPrecheckedSourceExternal covers authentication signals that
+	// are not session tokens (for example a signed JWT header from an
+	// upstream IAP). A custom SessionTokenFunc has no bearing on these
+	// results, so ExtractAPIKey always honors them.
+	APIKeyPrecheckedSourceExternal
+)
+
 // APIKeyPrechecked stores the result of top-level API key
 // validation performed by PrecheckAPIKey. It distinguishes
 // two states:
@@ -80,6 +101,31 @@ func (e *ValidateAPIKeyError) Error() string {
 type APIKeyPrechecked struct {
 	Result *ValidateAPIKeyResult
 	Err    *ValidateAPIKeyError
+	// Source identifies which extension produced this result. Leaving
+	// it unset means APIKeyPrecheckedSourceSessionToken, which matches
+	// the pre-existing PrecheckAPIKey behavior.
+	Source APIKeyPrecheckedSource
+}
+
+// SetPrecheckedResult stores a pre-populated APIKeyPrechecked under
+// the private context key that PrecheckAPIKey and ExtractAPIKeyMW
+// read. The caller MUST have already authenticated the request
+// through an equivalent signal (for example a signed JWT header
+// validated against a JWKS). The downstream chain trusts the result,
+// skips all token lookup and hash validation, and behaves as if the
+// request carried a normal session token. Misuse grants unconditional
+// access to whoever the seeded APIKey points at.
+func SetPrecheckedResult(ctx context.Context, pc APIKeyPrechecked) context.Context {
+	return context.WithValue(ctx, apiKeyPrecheckedContextKey{}, pc)
+}
+
+// APIKeyPrecheckedFromContext returns the prechecked API key result
+// previously stored by SetPrecheckedResult, if any. The second return
+// value is false when no pre-auth middleware has populated the
+// context.
+func APIKeyPrecheckedFromContext(ctx context.Context) (APIKeyPrechecked, bool) {
+	pc, ok := ctx.Value(apiKeyPrecheckedContextKey{}).(APIKeyPrechecked)
+	return pc, ok
 }
 
 // APIKeyOptional may return an API key from the ExtractAPIKey handler.
@@ -605,17 +651,30 @@ func ExtractAPIKey(rw http.ResponseWriter, r *http.Request, cfg ExtractAPIKeyCon
 	}
 
 	// --- Consume prechecked result if available ---
-	// Skip prechecked data when cfg has a custom SessionTokenFunc,
-	// because the precheck used the default token extraction and may
-	// have validated a different token (e.g. workspace app token
-	// issuance in workspaceapps/db.go).
+	// A prechecked result is consumed in two cases:
+	//   1. The caller has no custom SessionTokenFunc, so the top-level
+	//      precheck token and the route token are the same input.
+	//   2. The prechecked result's Source is External. An external
+	//      precheck (for example a JWT header validated by the
+	//      SeedPrecheckedAuthMW extension point) is not derived from a
+	//      session token at all, so a route's custom SessionTokenFunc
+	//      is irrelevant: using the prechecked identity and letting
+	//      SessionTokenFunc continue to feed ValidateAPIKey would be
+	//      double-auth under two different signals, not a conflict to
+	//      resolve.
+	// When neither case applies (SessionTokenFunc is set AND the
+	// prechecked source is the top-level session token), the precheck
+	// is skipped so ValidateAPIKey can run against the route-specific
+	// token instead.
 	var key *database.APIKey
 	var actor rbac.Subject
 	var userStatus database.UserStatus
 	var skipValidation bool
 
-	if cfg.SessionTokenFunc == nil {
-		if pc, ok := ctx.Value(apiKeyPrecheckedContextKey{}).(APIKeyPrechecked); ok {
+	if pc, ok := ctx.Value(apiKeyPrecheckedContextKey{}).(APIKeyPrechecked); ok {
+		usePrechecked := cfg.SessionTokenFunc == nil ||
+			pc.Source == APIKeyPrecheckedSourceExternal
+		if usePrechecked {
 			if pc.Err != nil {
 				// Validation failed at the top level (includes
 				// "no token provided").

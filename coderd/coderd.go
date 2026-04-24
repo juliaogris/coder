@@ -194,6 +194,16 @@ type Options struct {
 	// for all authenticated users under a condition, only in Enterprise.
 	PostAuthAdditionalHeadersFunc func(auth rbac.Subject, header http.Header)
 
+	// SeedPrecheckedAuthMW runs before PrecheckAPIKey. It is the only
+	// in-tree extension point that may call
+	// httpmw.SetPrecheckedResult; the contract is "the caller has
+	// already authenticated the request through an equivalent signal
+	// (for example a signed JWT header from an upstream proxy), so
+	// PrecheckAPIKey and ExtractAPIKeyMW should trust the seeded
+	// result and short-circuit token validation." If nil, no pre-auth
+	// step runs.
+	SeedPrecheckedAuthMW func(http.Handler) http.Handler
+
 	// TLSCertificates is used to mesh DERP servers securely.
 	TLSCertificates    []tls.Certificate
 	TailnetCoordinator tailnet.Coordinator
@@ -890,6 +900,14 @@ func New(options *Options) *API {
 		DisablePathApps:          options.DeploymentValues.DisablePathApps.Value(),
 		CookiesConfig:            options.DeploymentValues.HTTPCookies,
 		APIKeyEncryptionKeycache: options.AppEncryptionKeyCache,
+
+		// Extra Origin hosts that the workspace-app WebSocket upgrades
+		// (web terminal, port-forwarding) will accept. Populated from
+		// the JWTAuth deployment block so an IAP deployment can keep
+		// AccessURL pointing at an internal address (used by the agent
+		// and embedded DERP) while still accepting browser requests
+		// whose Origin is the public IAP hostname.
+		AdditionalAllowedOrigins: options.DeploymentValues.JWTAuth.AdditionalAllowedOrigins.Value(),
 	})
 
 	apiKeyMiddleware := httpmw.ExtractAPIKeyMW(httpmw.ExtractAPIKeyConfig{
@@ -954,6 +972,11 @@ func New(options *Options) *API {
 	cors := httpmw.Cors(options.DeploymentValues.Dangerous.AllowAllCors.Value())
 	prometheusMW := httpmw.Prometheus(options.PrometheusRegistry)
 
+	seedPrecheckedMW := options.SeedPrecheckedAuthMW
+	if seedPrecheckedMW == nil {
+		seedPrecheckedMW = func(next http.Handler) http.Handler { return next }
+	}
+
 	r.Use(
 		sharedhttpmw.Recover(api.Logger),
 		httpmw.WithProfilingLabels,
@@ -965,6 +988,11 @@ func New(options *Options) *API {
 		loggermw.Logger(api.Logger),
 		singleSlashMW,
 		rolestore.CustomRoleMW,
+		// SeedPrecheckedAuthMW runs before PrecheckAPIKey so an
+		// alternative authentication signal (for example a signed
+		// JWT header from an upstream proxy) can populate the
+		// prechecked result before the session-token path runs.
+		seedPrecheckedMW,
 		// Validate API key on every request (if present) and store
 		// the result in context. The rate limiter reads this to key
 		// by user ID, and downstream ExtractAPIKeyMW reuses it to
@@ -1815,32 +1843,43 @@ func New(options *Options) *API {
 			r.Get("/user-status-counts", api.insightsUserStatusCounts)
 		})
 		r.Route("/debug", func(r chi.Router) {
-			r.Use(
-				apiKeyMiddleware,
-				// Ensure only users with the debug_info:read (e.g. only owners)
-				// can view debug endpoints.
-				func(next http.Handler) http.Handler {
-					return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-						if !api.Authorize(r, policy.ActionRead, rbac.ResourceDebugInfo) {
-							httpapi.Forbidden(rw)
-							return
-						}
-
-						next.ServeHTTP(rw, r)
-					})
-				},
-			)
-
-			r.Get("/coordinator", api.debugCoordinator)
-			r.Get("/tailnet", api.debugTailnet)
-			r.Route("/health", func(r chi.Router) {
-				r.Get("/", api.debugDeploymentHealth)
-				r.Route("/settings", func(r chi.Router) {
-					r.Get("/", api.deploymentHealthSettings)
-					r.Put("/", api.putDeploymentHealthSettings)
-				})
-			})
+			// /debug/ws is mounted before the authenticated group because
+			// it is called from /debug/health's own in-process self-dial
+			// to verify websocket plumbing. The upstream is just an echo
+			// server with no user context, and requiring a session token
+			// would make the self-dial 401 for any caller who does not
+			// also carry one (for example under IAP/JWT, where the
+			// outer request authenticates via a signed header and the
+			// user's login_type is "none"). That failure surfaced as a
+			// red EWS01 in the Coder UI on otherwise-healthy deployments.
 			r.Get("/ws", (&healthcheck.WebsocketEchoServer{}).ServeHTTP)
+
+			r.Group(func(r chi.Router) {
+				r.Use(
+					apiKeyMiddleware,
+					// Ensure only users with the debug_info:read (e.g. only owners)
+					// can view debug endpoints.
+					func(next http.Handler) http.Handler {
+						return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+							if !api.Authorize(r, policy.ActionRead, rbac.ResourceDebugInfo) {
+								httpapi.Forbidden(rw)
+								return
+							}
+
+							next.ServeHTTP(rw, r)
+						})
+					},
+				)
+
+				r.Get("/coordinator", api.debugCoordinator)
+				r.Get("/tailnet", api.debugTailnet)
+				r.Route("/health", func(r chi.Router) {
+					r.Get("/", api.debugDeploymentHealth)
+					r.Route("/settings", func(r chi.Router) {
+						r.Get("/", api.deploymentHealthSettings)
+						r.Put("/", api.putDeploymentHealthSettings)
+					})
+				})
 			r.Route("/{user}", func(r chi.Router) {
 				r.Use(httpmw.ExtractUserParam(options.Database))
 				r.Get("/debug-link", api.userDebugOIDC)
@@ -1888,6 +1927,7 @@ func New(options *Options) *API {
 			r.Get("/metrics", promhttp.InstrumentMetricHandler(
 				options.PrometheusRegistry, promhttp.HandlerFor(options.PrometheusRegistry, promhttp.HandlerOpts{}),
 			).ServeHTTP)
+			})
 		})
 		// Manage OAuth2 applications that can use Coder as an OAuth2 provider.
 		r.Route("/oauth2-provider", func(r chi.Router) {

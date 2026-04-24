@@ -50,6 +50,7 @@ import (
 	"github.com/coder/coder/v2/enterprise/coderd/connectionlog"
 	"github.com/coder/coder/v2/enterprise/coderd/dbauthz"
 	"github.com/coder/coder/v2/enterprise/coderd/enidpsync"
+	entmw "github.com/coder/coder/v2/enterprise/coderd/httpmw"
 	"github.com/coder/coder/v2/enterprise/coderd/license"
 	"github.com/coder/coder/v2/enterprise/coderd/portsharing"
 	"github.com/coder/coder/v2/enterprise/coderd/prebuilds"
@@ -218,6 +219,33 @@ func New(ctx context.Context, options *Options) (_ *API, err error) {
 			}
 			return id
 		},
+	})
+
+	// JWTAuth middleware lets an upstream proxy (for example
+	// Teleport's app service) assert the caller's identity via a
+	// signed JWT header. Only fully-configured deployments turn it
+	// on; otherwise the constructor returns a no-op middleware.
+	//
+	// AutoProvisionUser is wired only when the operator has opted in
+	// via --jwt-auth-auto-provision. The closure captures api by
+	// reference so it can reach api.AGPL.CreateUser; api.AGPL is
+	// populated by the coderd.New call just below, which runs before
+	// the HTTP server starts serving requests. When the flag is off,
+	// passing a nil AutoProvisionUser keeps the old "unknown user
+	// falls through to 401" semantics.
+	var autoProvision func(ctx context.Context, user entmw.ProvisionedUser) (database.User, error)
+	if options.DeploymentValues.JWTAuth.AutoProvision.Value() {
+		autoProvision = jwtAutoProvisionFn(api)
+	}
+	options.Options.SeedPrecheckedAuthMW = entmw.New(entmw.Options{
+		Logger:            options.Logger.Named("jwtauth"),
+		Header:            options.DeploymentValues.JWTAuth.Header.Value(),
+		JWKSURL:           options.DeploymentValues.JWTAuth.JWKSURL.Value(),
+		Audience:          options.DeploymentValues.JWTAuth.Audience.Value(),
+		Issuer:            options.DeploymentValues.JWTAuth.Issuer.Value(),
+		AllowHTTP:         options.DeploymentValues.JWTAuth.AllowHTTP.Value(),
+		Database:          options.Database,
+		AutoProvisionUser: autoProvision,
 	})
 
 	api.AGPL = coderd.New(options.Options)

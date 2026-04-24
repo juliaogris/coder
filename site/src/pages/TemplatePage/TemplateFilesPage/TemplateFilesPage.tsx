@@ -15,9 +15,17 @@ const TemplateFilesPage: FC = () => {
 		organization?: string;
 	};
 	const { template, activeVersion } = useTemplateLayoutContext();
-	const { data: currentFiles } = useQuery(
-		templateFiles(activeVersion.job.file_id),
-	);
+	// activeVersion.job and previousVersion.job are typed as always
+	// present but the runtime can still see a version whose job has
+	// not been populated yet (a provisioner import that has not
+	// reached convertProvisionerJob, a 200 with a partial body from a
+	// misbehaving reverse proxy, etc.). Guard the .job access so the
+	// page degrades to a Loader instead of crashing the React tree.
+	const currentFileID = activeVersion.job?.file_id ?? "";
+	const { data: currentFiles } = useQuery({
+		...templateFiles(currentFileID),
+		enabled: currentFileID !== "",
+	});
 	const previousVersionQuery = useQuery(
 		previousTemplateVersion(
 			organizationName,
@@ -26,10 +34,13 @@ const TemplateFilesPage: FC = () => {
 		),
 	);
 	const previousVersion = previousVersionQuery.data;
+	const previousFileID = previousVersion?.job?.file_id ?? "";
 	const hasPreviousVersion =
-		previousVersionQuery.isSuccess && previousVersion !== null;
+		previousVersionQuery.isSuccess &&
+		previousVersion !== null &&
+		previousFileID !== "";
 	const { data: previousFiles } = useQuery({
-		...templateFiles(previousVersion?.job.file_id ?? ""),
+		...templateFiles(previousFileID),
 		enabled: hasPreviousVersion,
 	});
 	const shouldDisplayFiles =

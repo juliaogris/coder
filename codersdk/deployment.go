@@ -598,6 +598,7 @@ type DeploymentValues struct {
 	PostgresConnMaxIdle                     serpent.String                       `json:"pg_conn_max_idle,omitempty" typescript:",notnull"`
 	OAuth2                                  OAuth2Config                         `json:"oauth2,omitempty" typescript:",notnull"`
 	OIDC                                    OIDCConfig                           `json:"oidc,omitempty" typescript:",notnull"`
+	JWTAuth                                 JWTAuthConfig                        `json:"jwt_auth,omitempty" typescript:",notnull"`
 	Telemetry                               TelemetryConfig                      `json:"telemetry,omitempty" typescript:",notnull"`
 	TLS                                     TLSConfig                            `json:"tls,omitempty" typescript:",notnull"`
 	Trace                                   TraceConfig                          `json:"trace,omitempty" typescript:",notnull"`
@@ -827,6 +828,22 @@ type OIDCConfig struct {
 	// situations where the OIDC callback domain is different from the ACCESS_URL
 	// domain.
 	RedirectURL serpent.URL `json:"redirect_url" typescript:",notnull"`
+}
+
+// JWTAuthConfig controls header-based authentication where an upstream
+// proxy (for example Teleport's app service) asserts user identity by
+// signing a JWT and attaching it to every request via a configured
+// HTTP header. The feature is off by default. It activates when
+// Header, JWKSURL, and Audience are set and a database is available.
+// Issuer is optional and only enforced when set.
+type JWTAuthConfig struct {
+	Header                   serpent.String      `json:"header" typescript:",notnull"`
+	JWKSURL                  serpent.String      `json:"jwks_url" typescript:",notnull"`
+	Audience                 serpent.String      `json:"audience" typescript:",notnull"`
+	Issuer                   serpent.String      `json:"issuer" typescript:",notnull"`
+	AllowHTTP                serpent.Bool        `json:"allow_http" typescript:",notnull"`
+	AutoProvision            serpent.Bool        `json:"auto_provision" typescript:",notnull"`
+	AdditionalAllowedOrigins serpent.StringArray `json:"additional_allowed_origins" typescript:",notnull"`
 }
 
 type TelemetryConfig struct {
@@ -1357,6 +1374,11 @@ func (c *DeploymentValues) Options() serpent.OptionSet {
 		deploymentGroupOIDC = serpent.Group{
 			Name: "OIDC",
 			YAML: "oidc",
+		}
+		deploymentGroupJWTAuth = serpent.Group{
+			Name:        "JWT Auth",
+			Description: "Accept user identity asserted by an upstream proxy via a signed JWT header.",
+			YAML:        "jwtAuth",
 		}
 		deploymentGroupTelemetry = serpent.Group{
 			Name: "Telemetry",
@@ -2474,6 +2496,73 @@ func (c *DeploymentValues) Options() serpent.OptionSet {
 			// In most deployments, this setting can only complicate and break OIDC.
 			// So hide it, and only surface it to the small number of users that need it.
 			Hidden: true,
+		},
+		// JWT Auth settings
+		{
+			Name:        "JWT Auth Header",
+			Description: "HTTP header to read the user-identity JWT from. Setting this, JWKS URL, and Audience together enables JWT auth.",
+			Flag:        "jwt-auth-header",
+			Env:         "CODER_JWT_AUTH_HEADER",
+			Value:       &c.JWTAuth.Header,
+			Group:       &deploymentGroupJWTAuth,
+			YAML:        "header",
+		},
+		{
+			Name:        "JWT Auth JWKS URL",
+			Description: "JWKS endpoint used to verify JWT signatures. Setting this together with JWT Auth Header and JWT Auth Audience enables JWT auth. Must be https:// unless --dangerous-jwt-auth-allow-http is set. The URL must not target private or cloud metadata addresses; the middleware does not block those, so operator discretion is required.",
+			Flag:        "jwt-auth-jwks-url",
+			Env:         "CODER_JWT_AUTH_JWKS_URL",
+			Value:       &c.JWTAuth.JWKSURL,
+			Group:       &deploymentGroupJWTAuth,
+			YAML:        "jwksURL",
+		},
+		{
+			Name:        "JWT Auth Audience",
+			Description: "Expected value in the JWT aud claim, typically the Coder app's upstream URI as configured in the proxy. Setting this together with JWT Auth Header and JWT Auth JWKS URL enables JWT auth.",
+			Flag:        "jwt-auth-audience",
+			Env:         "CODER_JWT_AUTH_AUDIENCE",
+			Value:       &c.JWTAuth.Audience,
+			Group:       &deploymentGroupJWTAuth,
+			YAML:        "audience",
+		},
+		{
+			Name:        "JWT Auth Issuer",
+			Description: "Optional expected value for the JWT iss claim. When empty, issuer is not validated and only the aud claim and signature pin the relying party. Set this for defense in depth when the JWKS may serve multiple issuers.",
+			Flag:        "jwt-auth-issuer",
+			Env:         "CODER_JWT_AUTH_ISSUER",
+			Value:       &c.JWTAuth.Issuer,
+			Group:       &deploymentGroupJWTAuth,
+			YAML:        "issuer",
+		},
+		{
+			Name:        "DANGEROUS: JWT Auth Allow HTTP JWKS",
+			Description: "Dev and demo only: allow a non-https:// JWKS URL. This should never be used in production because an attacker on the network path to the JWKS can forge keys and mint valid-looking JWTs.",
+			Flag:        "dangerous-jwt-auth-allow-http",
+			Env:         "CODER_DANGEROUS_JWT_AUTH_ALLOW_HTTP",
+			Value:       &c.JWTAuth.AllowHTTP,
+			Group:       &deploymentGroupJWTAuth,
+			YAML:        "allowHTTP",
+			Default:     "false",
+			Hidden:      true,
+		},
+		{
+			Name:        "JWT Auth Auto Provision Users",
+			Description: "When true, the first valid JWT for a username not yet in the database creates an active user in the default organization, and a JWT for a dormant user reactivates them. Off by default; turn it on only when the upstream JWT issuer is the identity source of truth for the deployment (for example a Teleport proxy fronting Coder as an IAP).",
+			Flag:        "jwt-auth-auto-provision",
+			Env:         "CODER_JWT_AUTH_AUTO_PROVISION",
+			Value:       &c.JWTAuth.AutoProvision,
+			Group:       &deploymentGroupJWTAuth,
+			YAML:        "autoProvision",
+			Default:     "false",
+		},
+		{
+			Name:        "JWT Auth Additional Allowed Origins",
+			Description: "Extra host[:port] values to accept on workspace-app WebSocket upgrades (web terminal, port-forwarding). Needed when Coder's access URL is an internal address used by workspace agents and the DERP relay, but browsers reach Coder through a different public hostname (typically the upstream IAP's hostname). Each entry is matched against the request's Origin header host. Schemes are ignored.",
+			Flag:        "jwt-auth-additional-allowed-origins",
+			Env:         "CODER_JWT_AUTH_ADDITIONAL_ALLOWED_ORIGINS",
+			Value:       &c.JWTAuth.AdditionalAllowedOrigins,
+			Group:       &deploymentGroupJWTAuth,
+			YAML:        "additionalAllowedOrigins",
 		},
 		// Telemetry settings
 		telemetryEnable,
