@@ -3384,6 +3384,7 @@ export interface DERPServerConfig {
 	readonly region_name: string;
 	readonly stun_addresses: string;
 	readonly relay_url: string;
+	readonly relay_internal_url: string;
 }
 
 // From codersdk/deployment.go

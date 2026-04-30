@@ -229,6 +229,16 @@ Addresses for STUN servers to establish P2P connections. It's recommended to hav
 
 An HTTP URL that is accessible by other replicas to relay DERP traffic. Required for high availability.
 
+### --derp-server-relay-internal-url
+
+|             |                                                    |
+|-------------|----------------------------------------------------|
+| Type        | <code>url</code>                                   |
+| Environment | <code>$CODER_DERP_SERVER_RELAY_INTERNAL_URL</code> |
+| YAML        | <code>networking.derp.relayInternalURL</code>      |
+
+URL the embedded DERP relay is reachable at from inside the deployment network. When set, the embedded DERP region advertises a second node so reverse-proxied deployments can route external clients via the public access URL while in-cluster agents take the internal path.
+
 ### --block-direct-connections
 
 |             |                                          |

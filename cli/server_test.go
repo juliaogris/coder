@@ -55,6 +55,7 @@ import (
 	"github.com/coder/coder/v2/coderd/telemetry"
 	"github.com/coder/coder/v2/coderd/userpassword"
 	"github.com/coder/coder/v2/codersdk"
+	"github.com/coder/coder/v2/codersdk/workspacesdk"
 	"github.com/coder/coder/v2/cryptorand"
 	"github.com/coder/coder/v2/pty/ptytest"
 	"github.com/coder/coder/v2/tailnet/tailnettest"
@@ -2422,6 +2423,65 @@ func TestServer_DisabledDERP_ExternalMap(t *testing.T) {
 	// DERP should fail to connect
 	err = c.Connect(ctx)
 	require.Error(t, err)
+}
+
+func TestServer_DERPInternalRelay(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testutil.WaitMedium)
+	defer cancel()
+
+	const (
+		externalAccessURL = "https://external.example.com"
+		internalRelayURL  = "http://coder.cluster.internal:8080"
+	)
+
+	inv, cfg := clitest.New(t,
+		"server",
+		dbArg(t),
+		"--http-address", ":0",
+		"--access-url", externalAccessURL,
+		"--derp-server-relay-internal-url", internalRelayURL,
+	)
+	clitest.Start(t, inv.WithContext(ctx))
+	accessURL := waitAccessURL(t, cfg)
+
+	client := codersdk.New(accessURL)
+	randPassword, err := cryptorand.String(24)
+	require.NoError(t, err)
+	_, err = client.CreateFirstUser(ctx, codersdk.CreateFirstUserRequest{
+		Email:    "admin@coder.com",
+		Username: "admin",
+		Password: randPassword,
+		Trial:    true,
+	})
+	require.NoError(t, err)
+	loginResp, err := client.LoginWithPassword(ctx, codersdk.LoginWithPasswordRequest{
+		Email:    "admin@coder.com",
+		Password: randPassword,
+	})
+	require.NoError(t, err)
+	client.SetSessionToken(loginResp.SessionToken)
+
+	connInfo, err := workspacesdk.New(client).AgentConnectionInfoGeneric(ctx)
+	require.NoError(t, err)
+
+	region, ok := connInfo.DERPMap.Regions[999]
+	require.True(t, ok, "default embedded region should be present")
+	require.True(t, region.EmbeddedRelay)
+	require.Len(t, region.Nodes, 2,
+		"embedded region should advertise the access URL node and the internal relay node")
+
+	// The access-URL node is advertised first so external clients (which can
+	// only reach the public hostname) succeed on the first dial. In-cluster
+	// agents reach the internal node via TCP-path failover.
+	require.Equal(t, "external.example.com", region.Nodes[0].HostName)
+	require.Equal(t, 443, region.Nodes[0].DERPPort)
+	require.False(t, region.Nodes[0].ForceHTTP)
+
+	require.Equal(t, "coder.cluster.internal", region.Nodes[1].HostName)
+	require.Equal(t, 8080, region.Nodes[1].DERPPort)
+	require.True(t, region.Nodes[1].ForceHTTP)
 }
 
 type runServerOpts struct {

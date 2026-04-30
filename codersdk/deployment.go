@@ -729,12 +729,13 @@ type DERP struct {
 }
 
 type DERPServerConfig struct {
-	Enable        serpent.Bool        `json:"enable" typescript:",notnull"`
-	RegionID      serpent.Int64       `json:"region_id" typescript:",notnull"`
-	RegionCode    serpent.String      `json:"region_code" typescript:",notnull"`
-	RegionName    serpent.String      `json:"region_name" typescript:",notnull"`
-	STUNAddresses serpent.StringArray `json:"stun_addresses" typescript:",notnull"`
-	RelayURL      serpent.URL         `json:"relay_url" typescript:",notnull"`
+	Enable           serpent.Bool        `json:"enable" typescript:",notnull"`
+	RegionID         serpent.Int64       `json:"region_id" typescript:",notnull"`
+	RegionCode       serpent.String      `json:"region_code" typescript:",notnull"`
+	RegionName       serpent.String      `json:"region_name" typescript:",notnull"`
+	STUNAddresses    serpent.StringArray `json:"stun_addresses" typescript:",notnull"`
+	RelayURL         serpent.URL         `json:"relay_url" typescript:",notnull"`
+	RelayInternalURL serpent.URL         `json:"relay_internal_url" typescript:",notnull"`
 }
 
 type DERPConfig struct {
@@ -1925,6 +1926,15 @@ func (c *DeploymentValues) Options() serpent.OptionSet {
 			Annotations: serpent.Annotations{}.
 				Mark(annotationEnterpriseKey, "true").
 				Mark(annotationExternalProxies, "true"),
+		},
+		{
+			Name:        "DERP Server Relay Internal URL",
+			Description: "URL the embedded DERP relay is reachable at from inside the deployment network. When set, the embedded DERP region advertises a second node so reverse-proxied deployments can route external clients via the public access URL while in-cluster agents take the internal path.",
+			Flag:        "derp-server-relay-internal-url",
+			Env:         "CODER_DERP_SERVER_RELAY_INTERNAL_URL",
+			Value:       &c.DERP.Server.RelayInternalURL,
+			Group:       &deploymentGroupNetworkingDERP,
+			YAML:        "relayInternalURL",
 		},
 		{
 			Name:        "Block Direct Connections",

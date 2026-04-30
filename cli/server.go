@@ -581,19 +581,47 @@ func (r *RootCmd) Server(newAPI func(context.Context, *coderd.Options) (*coderd.
 				return xerrors.Errorf("parse ssh keygen algorithm %s: %w", vals.SSHKeygenAlgorithm, err)
 			}
 
+			nodes := []*tailcfg.DERPNode{{
+				Name:      fmt.Sprintf("%db", vals.DERP.Server.RegionID),
+				RegionID:  int(vals.DERP.Server.RegionID.Value()),
+				HostName:  vals.AccessURL.Value().Hostname(),
+				DERPPort:  accessURLPort,
+				STUNPort:  -1,
+				ForceHTTP: vals.AccessURL.Scheme == "http",
+			}}
+			// When an internal relay URL is configured, advertise a second node
+			// in the embedded region so in-cluster agents can dial the relay
+			// over a path that does not traverse the reverse proxy fronting
+			// the access URL. External clients still reach the relay via the
+			// access-URL node, which appears first in the list.
+			if vals.DERP.Server.RelayInternalURL.String() != "" {
+				internalURL := vals.DERP.Server.RelayInternalURL.Value()
+				_, internalPortRaw, _ := net.SplitHostPort(internalURL.Host)
+				if internalPortRaw == "" {
+					internalPortRaw = "80"
+					if internalURL.Scheme == "https" {
+						internalPortRaw = "443"
+					}
+				}
+				internalPort, err := strconv.Atoi(internalPortRaw)
+				if err != nil {
+					return xerrors.Errorf("parse DERP internal relay URL port: %w", err)
+				}
+				nodes = append(nodes, &tailcfg.DERPNode{
+					Name:      fmt.Sprintf("%di", vals.DERP.Server.RegionID),
+					RegionID:  int(vals.DERP.Server.RegionID.Value()),
+					HostName:  internalURL.Hostname(),
+					DERPPort:  internalPort,
+					STUNPort:  -1,
+					ForceHTTP: internalURL.Scheme == "http",
+				})
+			}
 			defaultRegion := &tailcfg.DERPRegion{
 				EmbeddedRelay: true,
 				RegionID:      int(vals.DERP.Server.RegionID.Value()),
 				RegionCode:    vals.DERP.Server.RegionCode.String(),
 				RegionName:    vals.DERP.Server.RegionName.String(),
-				Nodes: []*tailcfg.DERPNode{{
-					Name:      fmt.Sprintf("%db", vals.DERP.Server.RegionID),
-					RegionID:  int(vals.DERP.Server.RegionID.Value()),
-					HostName:  vals.AccessURL.Value().Hostname(),
-					DERPPort:  accessURLPort,
-					STUNPort:  -1,
-					ForceHTTP: vals.AccessURL.Scheme == "http",
-				}},
+				Nodes:         nodes,
 			}
 			if !vals.DERP.Server.Enable {
 				defaultRegion = nil

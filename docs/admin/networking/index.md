@@ -163,6 +163,49 @@ After you have custom DERP servers, you can launch Coder with them like so:
 coder server --derp-config-path derpmap.json
 ```
 
+#### Reverse-proxied deployments
+
+When Coder is fronted by an authenticating reverse proxy (such as a load
+balancer that requires user identity, an Identity-Aware Proxy, or
+Teleport application access), the embedded DERP relay is reachable from
+external clients via the public access URL but **not** from in-cluster
+workspace agents that lack the proxy's identity material. With
+`CODER_BLOCK_DIRECT=true` there is no peer-to-peer fallback, so this
+becomes a hard failure for agent connections.
+
+Set `--derp-server-relay-internal-url` (or
+`CODER_DERP_SERVER_RELAY_INTERNAL_URL`) to a URL that resolves to the
+embedded relay from inside the deployment network. The embedded DERP
+region then advertises a second node, so external clients continue to
+use the access URL while in-cluster agents fall through to the internal
+hostname:
+
+```bash
+coder server \
+  --access-url https://coder.example.com \
+  --derp-server-relay-internal-url http://coder.cluster.internal:8080
+```
+
+Caveats to be aware of:
+
+- **Node ordering.** The access-URL node is advertised first. In-cluster
+  TCP-path agents pay one round-trip to the public hostname before
+  failing through to the internal node. External-first ordering keeps
+  external-client behaviour unchanged.
+- **WebSocket transport does not iterate region nodes.** When clients
+  use `--derp-force-websockets` (often required when reverse proxies
+  mangle the `Upgrade: derp` header), only the first node is dialled.
+  In-cluster agents on the WebSocket transport cannot fall through to
+  the internal node, so this flag is most useful when at least
+  TCP-path DERP is available.
+- **Healthcheck.** With asymmetric routing (the server cannot reach its
+  own public access URL, common for reverse-proxied deployments), the
+  server-side healthcheck reports the unreachable node as unhealthy.
+  This is informational and does not affect client connectivity.
+- **Topology exposure.** The DERP map is served over an unauthenticated
+  endpoint, so the internal hostname is readable by any caller. Pick a
+  hostname that does not reveal sensitive infrastructure topology.
+
 ### Dashboard connections
 
 The dashboard (and web apps opened through the dashboard) are served from the
